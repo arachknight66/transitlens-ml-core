@@ -1,0 +1,4 @@
+target_id,true_label,predicted_label,true_period,detected_period,period_error_pct,confidence,processing_time_ms
+candidate_a,exoplanet_like,exoplanet_like,3.420000,3.412811,0.2102,1.000000,1856.80
+candidate_b,eclipsing_binary_like,eclipsing_binary_like,1.870000,0.935822,49.9560,0.900000,1185.75
+candidate_c,noise_or_other,noise_or_other,,,,1.000000,1337.31

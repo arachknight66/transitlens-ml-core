@@ -1,0 +1,19 @@
+========================================================================
+TransitLens ML Core — Classification Report
+========================================================================
+
+Overall Accuracy: 100.0%
+Period Recovery Rate: 50.0% (within 1% tolerance)
+
+Class                      Precision     Recall         F1    Support
+------------------------------------------------------------------------
+exoplanet_like                 1.000      1.000      1.000          1
+eclipsing_binary_like          1.000      1.000      1.000          1
+noise_or_other                 1.000      1.000      1.000          1
+------------------------------------------------------------------------
+
+Mean confidence (correct predictions):   0.967
+Mean confidence (incorrect predictions): 0.000
+
+Note: evaluated on synthetic data only. Real TESS performance may vary.
+========================================================================

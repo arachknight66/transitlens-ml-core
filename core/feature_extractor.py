@@ -257,6 +257,11 @@ def extract(
         features["phase_shape_kurtosis"] = 0.0
         reliable["phase_shape_kurtosis"] = False
 
+    if not bls_result.candidate_detected:
+        for k in ["odd_even_depth_delta", "v_shape_score", "phase_shape_kurtosis"]:
+            features[k] = _FALLBACK[k]
+            reliable[k] = False
+
     # ── Validate all features are finite ─────────────────────────────────
     features = _ensure_finite(features, reliable)
 
