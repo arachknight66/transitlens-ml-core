@@ -16,7 +16,10 @@ from __future__ import annotations
 import logging
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, File, UploadFile, Form
+import tempfile
+import os
+import json
 
 from api.schema import AnalyzeRequest, AnalyzeResponse, HealthResponse
 from pipeline import analyze_light_curve, _load_config
@@ -77,6 +80,138 @@ async def analyze(request: AnalyzeRequest) -> dict:
     except InvalidInputError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
+    return result
+
+
+# ---------------------------------------------------------------------------
+# POST /analyze/file
+# ---------------------------------------------------------------------------
+
+@router.post(
+    "/analyze/file",
+    response_model=AnalyzeResponse,
+    summary="Analyse a light curve from an uploaded file (e.g. FITS)",
+    description="Accepts a raw FITS file, parses it using the data pipeline, and runs the full analysis.",
+)
+async def analyze_file(
+    file: UploadFile = File(...),
+    target_id: str = Form("unknown"),
+    metadata: str = Form("{}"),
+) -> dict:
+    """
+    Accepts an uploaded file, extracts time and flux arrays, and analyses them.
+    Currently specifically tailored for FITS files via the 'fits' source.
+    """
+    try:
+        parsed_metadata = json.loads(metadata)
+    except json.JSONDecodeError:
+        raise HTTPException(status_code=422, detail="metadata must be a valid JSON string")
+        
+    parsed_metadata["target_id"] = target_id
+    
+    # Save uploaded file to temp dir
+    fd, tmp_path = tempfile.mkstemp(suffix=".fits")
+    try:
+        with os.fdopen(fd, "wb") as f:
+            f.write(await file.read())
+            
+        import sys
+        from pathlib import Path
+        repo_root = Path(__file__).resolve().parent.parent
+        dp_path = repo_root.parent / "transitlens-data-pipeline"
+        if dp_path.exists() and str(dp_path) not in sys.path:
+            sys.path.insert(0, str(dp_path))
+            
+        from interface import load_light_curve  # type: ignore
+        try:
+            lc_data = load_light_curve(
+                source="fits",
+                target_id=target_id,
+                config={"path": tmp_path}
+            )
+        except Exception as e:
+            raise HTTPException(status_code=422, detail=f"Failed to parse FITS file: {str(e)}")
+            
+        # Combine extracted metadata with provided metadata
+        extracted_metadata = lc_data.get("metadata", {})
+        parsed_metadata.update(extracted_metadata)
+        
+        try:
+            result = analyze_light_curve(
+                time=lc_data["time"],
+                flux=lc_data["flux"],
+                metadata=parsed_metadata,
+            )
+        except InvalidInputError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+            
+        return result
+        
+    finally:
+        if os.path.exists(tmp_path):
+            os.remove(tmp_path)
+
+
+# ---------------------------------------------------------------------------
+# POST /analyze/tess
+# ---------------------------------------------------------------------------
+
+@router.post(
+    "/analyze/tess",
+    response_model=AnalyzeResponse,
+    summary="Analyse a TESS light curve by TIC ID",
+    description="Accepts a TIC ID, downloads/fetches the light curve from MAST or loads it from cache, and runs the analysis.",
+)
+async def analyze_tess(
+    tic_id: str = Form(...),
+    sector: int | None = Form(None),
+    metadata: str = Form("{}"),
+) -> dict:
+    """
+    Accepts a TIC ID, retrieves the time/flux series via the data-pipeline,
+    and runs the full analysis pipeline.
+    """
+    try:
+        parsed_metadata = json.loads(metadata)
+    except json.JSONDecodeError:
+        raise HTTPException(status_code=422, detail="metadata must be a valid JSON string")
+        
+    parsed_metadata["target_id"] = f"TIC {tic_id}"
+    
+    import sys
+    from pathlib import Path
+    repo_root = Path(__file__).resolve().parent.parent
+    dp_path = repo_root.parent / "transitlens-data-pipeline"
+    if dp_path.exists() and str(dp_path) not in sys.path:
+        sys.path.insert(0, str(dp_path))
+        
+    from interface import load_light_curve  # type: ignore
+    try:
+        config = {}
+        if sector is not None:
+            config["sector"] = sector
+            
+        lc_data = load_light_curve(
+            source="tess",
+            target_id=tic_id,
+            config=config
+        )
+    except Exception as e:
+        raise HTTPException(status_code=422, detail=f"Failed to fetch TESS data: {str(e)}")
+        
+    # Combine extracted metadata with provided metadata
+    extracted_metadata = lc_data.get("metadata", {})
+    parsed_metadata.update(extracted_metadata)
+    
+    try:
+        result = analyze_light_curve(
+            time=lc_data["time"],
+            flux=lc_data["flux"],
+            metadata=parsed_metadata,
+        )
+    except InvalidInputError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+        
     return result
 
 
@@ -146,14 +281,29 @@ def _load_demo_data(
             sys.path.insert(0, str(dp_path))
 
         from interface import load_light_curve  # type: ignore
-        result = load_light_curve(f"candidate_{candidate_id}")
-        return (
-            result["time"].tolist(),
-            result["flux"].tolist(),
-            result.get("metadata", {"target_id": f"candidate_{candidate_id}"}),
+    except ImportError as e:
+        logger.warning(f"demo: data-pipeline not available ({e}), using built-in generator")
+        return _generate_synthetic(candidate_id)
+
+    try:
+        result = load_light_curve(
+            source="synthetic",
+            target_id=f"candidate_{candidate_id}",
+            config={"generate": True}
         )
-    except Exception:
-        logger.debug("demo: data-pipeline not available, using built-in generator")
+        metadata = result.get("metadata", {})
+        metadata["target_id"] = f"candidate_{candidate_id}"
+        return (
+            result["time"],
+            result["flux"],
+            metadata,
+        )
+    except Exception as e:
+        logger.error(f"demo: load_light_curve failed: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Integration error: load_light_curve failed: {str(e)}"
+        ) from e
 
     # Built-in minimal synthetic generator
     return _generate_synthetic(candidate_id)

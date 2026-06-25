@@ -17,6 +17,7 @@ Covers:
 
 from __future__ import annotations
 
+import os
 import pytest
 import numpy as np
 
@@ -160,3 +161,35 @@ class TestTimingHeader:
     def test_timing_header_present(self):
         response = client.get("/health")
         assert "x-processing-time-ms" in response.headers
+
+
+# ---------------------------------------------------------------------------
+# POST /analyze/file and POST /analyze/tess
+# ---------------------------------------------------------------------------
+
+class TestAnalyzeFileAndTess:
+    """Tests for POST /analyze/file and POST /analyze/tess."""
+
+    def test_analyze_file_returns_200(self):
+        fits_path = r"C:\Users\arach\Documents\Projects\Transitlens\transitlens-data-pipeline\real_tess\cache\TIC261136679_sector095.fits"
+        assert os.path.exists(fits_path)
+        with open(fits_path, "rb") as f:
+            response = client.post(
+                "/analyze/file",
+                files={"file": ("TIC261136679_sector095.fits", f, "application/octet-stream")},
+                data={"target_id": "TIC 261136679", "metadata": "{}"}
+            )
+        assert response.status_code == 200
+        data = response.json()
+        assert data["target_id"] == "TIC 261136679"
+        assert "predicted_class" in data
+
+    def test_analyze_tess_returns_200(self):
+        response = client.post(
+            "/analyze/tess",
+            data={"tic_id": "261136679"}
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert data["target_id"] == "TIC 261136679"
+        assert "predicted_class" in data

@@ -32,10 +32,10 @@ class AnalyzeRequest(BaseModel):
     at least 100 data points.
     """
     time: list[float] = Field(
-        ..., min_length=100, description="BTJD timestamps, monotonically increasing"
+        ..., min_length=500, description="BTJD timestamps, monotonically increasing"
     )
     flux: list[float] = Field(
-        ..., min_length=100, description="Normalised flux values (median ≈ 1.0)"
+        ..., min_length=500, description="Normalised flux values (median ≈ 1.0)"
     )
     target_id: str = Field(
         default="unknown", description="Identifier for this target"
