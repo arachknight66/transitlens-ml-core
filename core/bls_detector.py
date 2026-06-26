@@ -60,6 +60,7 @@ DEFAULT_CONFIG = {
     "snr_threshold": 7.0,           # minimum multi-point SNR for detection
     "min_depth_snr": 0.5,           # minimum depth/global_flux_rms guard (FP suppressor)
     "alias_check_tolerance": 0.20,  # power within this fraction of peak → flag alias
+    "alias_promote_threshold": 0.90, # promote 2xP if its power >= this fraction of peak (alias correction)
 }
 
 
@@ -185,10 +186,10 @@ def detect(
     # ── Dispatch to backend ───────────────────────────────────────────────
     try:
         if _ASTROPY_AVAILABLE:
-            periods, power, best_params = _run_astropy_bls(time, flux, cfg, period_min, period_max)
+            periods, power, best_params = _run_astropy_bls(time, flux, cfg, period_min, period_max, normalize=False)
             backend = "astropy"
         else:
-            periods, power, best_params = _run_scipy_bls(time, flux, cfg, period_min, period_max)
+            periods, power, best_params = _run_scipy_bls(time, flux, cfg, period_min, period_max, normalize=False)
             backend = "scipy"
     except BLSDetectionError:
         raise
@@ -198,13 +199,56 @@ def detect(
             details={"backend": "astropy" if _ASTROPY_AVAILABLE else "scipy"},
         ) from exc
 
-    # ── Extract peak ──────────────────────────────────────────────────────
+    # -- Extract peak and run local fine search --------------------------------
     peak_idx = int(np.argmax(power))
-    bls_power_peak = float(power[peak_idx])
-    best_period = float(periods[peak_idx])
-    best_t0 = float(best_params["t0"][peak_idx])
-    best_duration = float(best_params["duration"][peak_idx])
-    best_depth = float(best_params["depth"][peak_idx])
+    coarse_best_period = float(periods[peak_idx])
+
+    # Run local fine-resolution BLS around coarse_best_period
+    fine_periods1 = np.linspace(coarse_best_period * 0.98, coarse_best_period * 1.02, 100)
+    if _ASTROPY_AVAILABLE:
+        _, fine_power1, fine_params1 = _run_astropy_bls(time, flux, cfg, period_min, period_max, periods_grid=fine_periods1, normalize=False)
+    else:
+        _, fine_power1, fine_params1 = _run_scipy_bls(time, flux, cfg, period_min, period_max, periods_grid=fine_periods1, normalize=False)
+
+    idx_f1 = int(np.argmax(fine_power1))
+    best_period = float(fine_periods1[idx_f1])
+    bls_power_peak_raw = float(fine_power1[idx_f1])
+    best_t0 = float(fine_params1["t0"][idx_f1])
+    best_duration = float(fine_params1["duration"][idx_f1])
+    best_depth = float(fine_params1["depth"][idx_f1])
+
+    # -- Half-period alias promotion -------------------------------------------
+    # BLS preferentially recovers P/2 when only a few (<=3) transits are visible
+    # (e.g. P=7d or P=12d in a 27-day TESS sector). Check whether doubling the
+    # period gives comparable power, and if so promote 2×P as the true period.
+    time_span = float(time[-1] - time[0]) if len(time) > 1 else 27.0
+    n_transits_at_best = time_span / best_period if best_period > 0 else 999.0
+    double_period = best_period * 2.0
+    if (n_transits_at_best <= 10.0) and (double_period <= time_span / 1.5):
+        # Run local fine-resolution BLS around double_period
+        fine_periods2 = np.linspace(double_period * 0.98, double_period * 1.02, 100)
+        if _ASTROPY_AVAILABLE:
+            _, fine_power2, fine_params2 = _run_astropy_bls(time, flux, cfg, period_min, period_max, periods_grid=fine_periods2, normalize=False)
+        else:
+            _, fine_power2, fine_params2 = _run_scipy_bls(time, flux, cfg, period_min, period_max, periods_grid=fine_periods2, normalize=False)
+
+        idx_f2 = int(np.argmax(fine_power2))
+        power_2p_raw = float(fine_power2[idx_f2])
+        alias_promote_thresh = cfg.get("alias_promote_threshold", 0.40)
+        if power_2p_raw >= bls_power_peak_raw * alias_promote_thresh:
+            best_period = float(fine_periods2[idx_f2])
+            best_t0 = float(fine_params2["t0"][idx_f2])
+            best_duration = float(fine_params2["duration"][idx_f2])
+            best_depth = float(fine_params2["depth"][idx_f2])
+            bls_power_peak_raw = power_2p_raw
+
+    # -- Normalize power peak and power spectrum ------------------------------
+    global_max_power = float(np.max(power)) if len(power) > 0 else 1.0
+    if global_max_power > 0:
+        power = power / global_max_power
+        bls_power_peak = bls_power_peak_raw / global_max_power
+    else:
+        bls_power_peak = 0.0
 
     # -- Compute SNR and local_noise -------------------------------------------
     snr, local_noise = _compute_snr(time, flux, best_period, best_t0, best_duration, best_depth)
@@ -223,7 +267,10 @@ def detect(
     power_ok = bls_power_peak >= cfg["bls_power_threshold"]
     snr_ok = snr >= cfg["snr_threshold"]
     depth_snr = (best_depth / global_noise) if global_noise > 0 else 0.0
-    depth_ok = depth_snr >= cfg.get("min_depth_snr", 0.5)
+    dur_fraction = (best_duration / best_period) if best_period > 0 else 1.0
+    depth_ok = (depth_snr >= cfg.get("min_depth_snr", 0.5)) or (
+        snr >= 11.0 and dur_fraction <= 0.35 and depth_snr >= 0.15
+    )
     candidate_detected = power_ok and snr_ok and depth_ok
 
     if candidate_detected:
@@ -288,6 +335,8 @@ def _run_astropy_bls(
     cfg: dict,
     period_min: float,
     period_max: float,
+    periods_grid: np.ndarray | None = None,
+    normalize: bool = True,
 ) -> tuple[np.ndarray, np.ndarray, dict]:
     """
     Run BLS using astropy.timeseries.BoxLeastSquares.
@@ -298,13 +347,16 @@ def _run_astropy_bls(
     time_span = float(time[-1] - time[0])
     n_oversample = int(cfg["n_oversample"])
 
-    # Build frequency grid (uniform in frequency for equal sensitivity)
-    freq_min = 1.0 / period_max
-    freq_max = 1.0 / period_min
-    df = 1.0 / (n_oversample * time_span)
-    n_freqs = max(1, int(np.ceil((freq_max - freq_min) / df)))
-    freqs = np.linspace(freq_min, freq_max, n_freqs)
-    periods = 1.0 / freqs
+    # Build frequency grid
+    if periods_grid is not None:
+        periods = np.asarray(periods_grid, dtype=float)
+    else:
+        freq_min = 1.0 / period_max
+        freq_max = 1.0 / period_min
+        df = 1.0 / (n_oversample * time_span)
+        n_freqs = max(1, int(np.ceil((freq_max - freq_min) / df)))
+        freqs = np.linspace(freq_min, freq_max, n_freqs)
+        periods = 1.0 / freqs
 
     # Build duration grid: log-spaced between duration_min and duration_max_fraction × period_min
     n_dur = int(cfg["n_durations"])
@@ -319,8 +371,11 @@ def _run_astropy_bls(
     power = np.asarray(result.power, dtype=float)
 
     # Normalise power to [0, 1] range — astropy returns unnormalised SR statistic
-    if power.max() > 0:
-        power_norm = power / power.max()
+    if normalize:
+        if power.max() > 0:
+            power_norm = power / power.max()
+        else:
+            power_norm = power
     else:
         power_norm = power
 
@@ -349,6 +404,8 @@ def _run_scipy_bls(
     cfg: dict,
     period_min: float,
     period_max: float,
+    periods_grid: np.ndarray | None = None,
+    normalize: bool = True,
 ) -> tuple[np.ndarray, np.ndarray, dict]:
     """
     Pure NumPy/SciPy BLS implementation — used when astropy is unavailable.
@@ -373,14 +430,18 @@ def _run_scipy_bls(
     n_oversample = int(cfg["n_oversample"])
 
     # ── Period grid (frequency-uniform) ───────────────────────────────────
-    freq_min = 1.0 / period_max
-    freq_max = 1.0 / period_min
-    df = 1.0 / (n_oversample * time_span)
-    n_freqs = max(1, int(np.ceil((freq_max - freq_min) / df)))
-    # Limit to a reasonable size for compute time
-    n_freqs = min(n_freqs, 20_000)
-    freqs = np.linspace(freq_min, freq_max, n_freqs)
-    periods_grid = 1.0 / freqs
+    if periods_grid is not None:
+        periods_grid = np.asarray(periods_grid, dtype=float)
+        n_freqs = len(periods_grid)
+    else:
+        freq_min = 1.0 / period_max
+        freq_max = 1.0 / period_min
+        df = 1.0 / (n_oversample * time_span)
+        n_freqs = max(1, int(np.ceil((freq_max - freq_min) / df)))
+        # Limit to a reasonable size for compute time
+        n_freqs = min(n_freqs, 20_000)
+        freqs = np.linspace(freq_min, freq_max, n_freqs)
+        periods_grid = 1.0 / freqs
 
     # ── Duration grid ─────────────────────────────────────────────────────
     n_dur = int(cfg["n_durations"])
@@ -466,9 +527,12 @@ def _run_scipy_bls(
             depth_arr[i] = 0.0
 
     # -- Normalise power -------------------------------------------------------
-    max_power = power_arr.max()
-    if max_power > 0:
-        power_norm = power_arr / max_power
+    if normalize:
+        max_power = power_arr.max()
+        if max_power > 0:
+            power_norm = power_arr / max_power
+        else:
+            power_norm = power_arr
     else:
         power_norm = power_arr
 

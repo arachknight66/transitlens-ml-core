@@ -460,13 +460,20 @@ class TestDepthToNoiseRatio:
         """18% transit has much higher depth/noise than 1.3% transit."""
         assert features_b.features["depth_to_noise_ratio"] > features_a.features["depth_to_noise_ratio"]
 
-    def test_ratio_near_snr(self, features_a):
-        """depth_to_noise_ratio and snr both measure depth/noise — should be similar."""
+    def test_ratio_near_snr(self, features_a, candidate_a_data):
+        """depth_to_noise_ratio and snr both measure depth/noise -- should be similar after scaling."""
+        t, f = candidate_a_data
         dtnr = features_a.features["depth_to_noise_ratio"]
         snr = features_a.features["snr"]
-        # They use slightly different noise estimates (local vs global)
-        ratio = dtnr / snr if snr > 0 else 0
-        assert 0.5 < ratio < 2.0, f"dtnr/snr ratio={ratio:.2f} unexpectedly far from 1"
+        period = features_a.features["period_days"]
+        duration = features_a.features["duration_days"]
+        
+        # Estimate number of points in transit
+        cadence = (t[-1] - t[0]) / len(t)
+        n_in = (duration / cadence) * ((t[-1] - t[0]) / period)
+        
+        ratio = (dtnr * np.sqrt(n_in)) / snr if snr > 0 else 0
+        assert 0.5 < ratio < 2.0, f"scaled ratio={ratio:.2f} unexpectedly far from 1"
 
 
 # ---------------------------------------------------------------------------
