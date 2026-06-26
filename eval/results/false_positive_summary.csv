@@ -1,0 +1,6 @@
+control_type,n_controls,n_false_positive,false_positive_rate,mean_confidence_false_positive,median_snr_false_positive
+white_noise,5,0,0.0,,
+red_noise,5,5,1.0,0.0,9.019238538578115
+sinusoidal,5,1,0.2,0.0,8.308918673995592
+quasi_periodic,5,5,1.0,0.0,9.172970180561718
+systematics_gap,5,5,1.0,0.0,9.032776855801641

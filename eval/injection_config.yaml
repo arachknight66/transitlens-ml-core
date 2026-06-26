@@ -1,0 +1,116 @@
+# ============================================================
+# TransitLens Phase 4 — Injection-Recovery Suite Configuration
+# ============================================================
+# Used by: eval/run_injection_recovery.py
+# Modes:  quick (~100 trials), standard (~600 trials), full (~2200 trials)
+
+global:
+  random_seed: 42
+  cadence_min: 2.0          # minutes — TESS 2-min short cadence
+  time_span_days: 27.0      # one TESS sector
+  output_dir: "eval/results"
+  max_runtime_minutes: null  # null = no limit; set to integer to cap
+
+# ── Injection grid ─────────────────────────────────────────
+# The full grid is the Cartesian product of all list values.
+# Full grid size:
+#   5 periods × 5 depths × 4 durations × 3 noises × 3 variability
+#   × 3 gaps × 3 dilutions = 8100 cells
+# n_trials_per_cell controls how many random epoch/seed realisations
+# per cell. For quick mode this is overridden to 1 and grid is subsampled.
+
+grid:
+  period_days:
+    - 0.75
+    - 1.5
+    - 3.5
+    - 7.0
+    - 12.0
+
+  depth:            # fractional flux drop (1 = 100%)
+    - 0.0003        # 300 ppm — Earth-like around Sun-like (hard)
+    - 0.001         # 1000 ppm — super-Earth
+    - 0.003         # 3000 ppm — Neptune-like
+    - 0.005         # 5000 ppm — sub-Saturn
+    - 0.015         # 1.5% — hot Jupiter
+
+  duration_days:    # total transit duration (ingress to egress)
+    - 0.06          # 1.4 hr — short/compact
+    - 0.10          # 2.4 hr — moderate
+    - 0.15          # 3.6 hr — typical
+    - 0.25          # 6.0 hr — long/grazing
+
+  noise_rms:        # per-point RMS noise level (fractional flux)
+    - 0.0005        # quiet (TESS bright star)
+    - 0.001         # typical
+    - 0.002         # noisy (faint star / red noise dominated)
+
+  variability_mode:
+    - none
+    - sinusoidal
+    - quasi_periodic
+
+  gap_mode:
+    - none
+    - random_gaps
+    - tess_downlink_gap
+
+  dilution_factor:  # blend contamination (1.0 = no dilution)
+    - 1.0           # pure signal
+    - 0.75          # 25% diluted (nearby companion)
+    - 0.5           # 50% diluted (equal-brightness blend)
+
+  # Variability amplitude as fraction of stellar flux
+  # Applied only when variability_mode != none
+  variability_amplitude: 0.003
+
+  # Ingress duration as fraction of total transit duration (0 = box, ~0.2 = trapezoid)
+  ingress_ratio: 0.2
+
+  # Number of random epoch realisations per grid cell
+  # (overridden per mode — see n_trials comments below)
+  n_trials_per_cell: 1
+
+# ── Control light curves (no injected transit) ─────────────
+# These measure false-positive rate of the detector.
+controls:
+  n_white_noise: 20
+  n_red_noise: 20
+  n_sinusoidal: 20
+  n_quasi_periodic: 20
+  n_systematics_gap: 20
+
+# ── Recovery thresholds ────────────────────────────────────
+recovery_thresholds:
+  period_tolerance_1pct: 1.0       # percent
+  period_tolerance_5pct: 5.0       # percent
+  alias_tolerance_pct: 1.0         # percent — for harmonic match
+  min_snr_for_recall: 7.0          # SNR threshold for success-rate reporting
+  detection_snr_threshold: 7.0     # pipeline SNR threshold (must match bls_detector DEFAULT_CONFIG)
+  snr_bins:
+    - 0
+    - 3
+    - 5
+    - 7
+    - 10
+    - 15
+    - 20
+    - 999
+
+# ── Runtime modes ──────────────────────────────────────────
+# quick:    ~75 injections + 25 controls  (~100 total) — development check
+# standard: ~500 injections + 100 controls (~600 total) — minimum judge-grade
+# full:     ~2000 injections + 200 controls (~2200 total) — strong evidence
+modes:
+  quick:
+    n_injection_trials: 75
+    n_controls_total: 25
+    subsample_grid: true     # random subsample of grid cells
+  standard:
+    n_injection_trials: 500
+    n_controls_total: 100
+    subsample_grid: true
+  full:
+    n_injection_trials: 2000
+    n_controls_total: 200
+    subsample_grid: false    # full grid with multiple trials per cell where possible

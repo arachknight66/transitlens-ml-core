@@ -1,0 +1,2 @@
+confidence_bin_lo,confidence_bin_hi,n,fraction_detected_correctly,mean_confidence
+0.0,0.2,75,0.5733333333333334,0.0

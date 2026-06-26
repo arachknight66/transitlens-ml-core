@@ -7,10 +7,19 @@ Runs separate evaluations on:
 2. Real validation split (val.csv)
 3. Blind test split (test.csv)
 4. Labeled gold demonstration set (gold_set.csv)
-5. Injection-recovery suite
+5. Injection-recovery suite (Phase 4 — optional, controlled by --injection flag)
 
 Outputs classification metrics (accuracy, macro F1, confusion matrices, ROC/PR curves),
-parameter recovery accuracy, and execution speed profiles.
+parameter recovery accuracy, execution speed profiles, and injection-recovery summary.
+
+Usage:
+    python -m eval.run_full_evaluation                    # standard eval, no injection
+    python -m eval.run_full_evaluation --injection        # + quick injection recovery
+    python -m eval.run_full_evaluation --injection --injection-mode standard
+
+Note: Injection-recovery is NOT run by default to keep the full eval fast.
+Run it explicitly with --injection, or separately:
+    python -m eval.run_injection_recovery --mode standard
 """
 
 from __future__ import annotations
@@ -36,7 +45,7 @@ if str(_DP_PATH) not in sys.path:
 
 from pipeline import analyze_light_curve
 from eval.metrics import classification_report, confidence_calibration, period_recovery_rate
-from eval.injection_recovery import run_suite as run_injection_suite
+from eval.injection_recovery import run_injection_recovery_suite, run_suite as run_injection_suite
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger(__name__)
@@ -352,6 +361,27 @@ def evaluate_gold_set(gold_csv_path: Path) -> tuple[list[dict], dict]:
     return results, metrics
 
 def main():
+    import argparse
+    parser = argparse.ArgumentParser(
+        description="TransitLens Full Evaluation Suite",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    parser.add_argument(
+        "--injection", action="store_true",
+        help=(
+            "Run Phase 4 injection-recovery suite in addition to classification evaluation. "
+            "Not run by default to keep the full eval fast. "
+            "Run separately with: python -m eval.run_injection_recovery --mode standard"
+        ),
+    )
+    parser.add_argument(
+        "--injection-mode",
+        choices=("quick", "standard", "full"),
+        default="quick",
+        help="Injection-recovery mode (default: quick). Used only when --injection is set.",
+    )
+    args, _unknown = parser.parse_known_args()
+
     splits_dir = _DP_PATH / "datasets" / "splits"
     val_csv = splits_dir / "val.csv"
     test_csv = splits_dir / "test.csv"
@@ -360,11 +390,37 @@ def main():
     processed_dir = _DP_PATH / "datasets" / "processed" / "lightcurves"
     val_manifest = processed_dir / "splits" / "val_manifest.csv"
     test_manifest = processed_dir / "splits" / "test_manifest.csv"
-    
-    # 1. Run Injection Recovery suite
-    logger.info("Running injection-recovery suite...")
-    run_injection_suite(n_trials=30)
-    
+
+    # 1. Optionally run Phase 4 Injection-Recovery suite
+    injection_summary = None
+    if args.injection:
+        logger.info(
+            "Running Phase 4 injection-recovery suite (mode=%s)...",
+            args.injection_mode
+        )
+        logger.info(
+            "Note: Run 'python -m eval.run_injection_recovery --mode standard' "
+            "for a full standalone benchmark run with all outputs and plots."
+        )
+        try:
+            injection_summary = run_injection_recovery_suite(
+                mode=args.injection_mode,
+                output_dir=str(RESULTS_DIR),
+            )
+            logger.info(
+                "Injection-recovery complete: recall=%.1f%%, period_1%%=%.1f%%, FP=%.1f%%",
+                (injection_summary.get('detection_recall') or 0) * 100,
+                (injection_summary.get('period_recovery_rate_1pct') or 0) * 100,
+                (injection_summary.get('false_positive_rate_controls') or 0) * 100,
+            )
+        except Exception as exc:
+            logger.warning("Injection-recovery suite failed (non-fatal): %s", exc)
+    else:
+        logger.info(
+            "Skipping Phase 4 injection-recovery (use --injection to enable). "
+            "Run 'python -m eval.run_injection_recovery --mode standard' for a full benchmark."
+        )
+
     # 2. Load Split Datasets
     if val_manifest.exists() and test_manifest.exists():
         logger.info("Processed NPZ manifests found. Running evaluation on Phase 1 NPZ dataset splits...")
@@ -427,6 +483,21 @@ def main():
     logger.info(f"Saved metrics to {RESULTS_DIR / 'metrics.json'}")
     
     # Write full_evaluation_summary.md report
+    def _ir_val(key, default="N/A"):
+        """Safely get injection-recovery metric for report."""
+        if injection_summary is None:
+            return "(not run — use --injection to enable)"
+        val = injection_summary.get(key)
+        if val is None:
+            return default
+        import math
+        try:
+            if math.isnan(val):
+                return default
+            return f"{val * 100:.1f}%"
+        except Exception:
+            return str(val)
+
     summary_md = f"""# TransitLens Scientific Performance Evaluation Summary
 
 ## 1. Executive Summary
@@ -450,6 +521,19 @@ def main():
 - **Mean Transit Duration Error**: {test_metrics['mean_duration_error_pct']:.2f}%
 
 *Parameter errors are computed relative to synthetic/archive catalogue ground truth.*
+
+## 4. Phase 4 Injection-Recovery Summary (Synthetic Evidence Only)
+
+> Evidence type: Synthetic injection-recovery benchmark. NOT real-TESS evidence.
+> Run `python -m eval.run_injection_recovery --mode standard` for a full benchmark.
+
+- **Detection Recall (all SNR)**: {_ir_val('detection_recall')}
+- **Detection Recall (SNR ≥ 7)**: {_ir_val('detection_recall_high_snr')}
+- **Period Recovery ±1% (all)**: {_ir_val('period_recovery_rate_1pct')}
+- **Period Recovery ±1% (SNR ≥ 7)**: {_ir_val('period_recovery_1pct_high_snr')}
+- **False-Positive Rate (controls)**: {_ir_val('false_positive_rate_controls')}
+
+See `eval/results/phase4_injection_recovery_report.md` for the full Phase 4 report.
 """
     summary_path = RESULTS_DIR / "full_evaluation_summary.md"
     summary_path.write_text(summary_md, encoding="utf-8")

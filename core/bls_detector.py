@@ -57,7 +57,7 @@ DEFAULT_CONFIG = {
     "duration_min_days": 0.01,      # ~15 minutes
     "duration_max_fraction": 0.5,   # max duration = fraction × period
     "bls_power_threshold": 0.15,    # minimum normalised BLS power for detection
-    "snr_threshold": 5.0,           # minimum SNR for detection
+    "snr_threshold": 7.0,           # minimum SNR for detection
     "alias_check_tolerance": 0.20,  # power within this fraction of peak → flag alias
 }
 
@@ -484,7 +484,8 @@ def _compute_snr(
     depth: float,
 ) -> float:
     """
-    Compute signal-to-noise ratio as depth / local_noise.
+    Compute signal-to-noise ratio of the transit detection.
+    SNR = depth / (local_noise / sqrt(n_in_transit))
 
     local_noise is the RMS of the out-of-transit flux in the phase-folded
     light curve. Using out-of-transit noise (rather than global noise)
@@ -500,8 +501,8 @@ def _compute_snr(
     Returns
     -------
     float
-        SNR = depth / local_noise. Returns 0.0 if computation fails or
-        if out-of-transit points are insufficient.
+        SNR = depth / local_noise * sqrt(n_in_transit). Returns 0.0 if computation fails
+        or if out-of-transit points are insufficient.
     """
     if period <= 0 or duration <= 0 or depth <= 0:
         return 0.0
@@ -522,7 +523,13 @@ def _compute_snr(
         if local_noise <= 0:
             return 0.0
 
-        return float(depth / local_noise)
+        # Calculate number of points in transit
+        in_transit = np.abs(phase) <= (duration_phase / 2.0)
+        n_in_transit = int(np.sum(in_transit))
+        if n_in_transit <= 0:
+            n_in_transit = 1
+
+        return float((depth / local_noise) * np.sqrt(n_in_transit))
 
     except Exception as exc:
         logger.warning("_compute_snr failed: %s", exc)
