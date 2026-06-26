@@ -110,6 +110,18 @@ class BLSResult:
     alias_warning: bool
     backend: str
     detection_reason: str
+    top_periods: np.ndarray = field(default_factory=lambda: np.array([]))
+    top_powers: np.ndarray = field(default_factory=lambda: np.array([]))
+    top_t0s: np.ndarray = field(default_factory=lambda: np.array([]))
+    top_durations: np.ndarray = field(default_factory=lambda: np.array([]))
+    top_depths: np.ndarray = field(default_factory=lambda: np.array([]))
+    selected_period_before_alias_correction: Optional[float] = None
+    selected_period_after_alias_correction: Optional[float] = None
+    alias_type: str = "none"
+    alias_corrected: bool = False
+    detection_sde: float = 0.0
+    local_noise: float = 0.0
+    false_alarm_proxy: float = 1.0
 
 
 # ---------------------------------------------------------------------------
