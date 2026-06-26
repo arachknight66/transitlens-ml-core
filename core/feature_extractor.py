@@ -51,6 +51,11 @@ FEATURE_NAMES = (
     "local_noise",
     "depth_to_noise_ratio",
     "phase_shape_kurtosis",
+    "bls_sde",
+    "secondary_eclipse_depth",
+    "centroid_shift",
+    "crowding_metric",
+    "gaia_neighbor_count",
 )
 
 # Default fallback values used when a feature cannot be computed reliably
@@ -66,6 +71,11 @@ _FALLBACK = {
     "local_noise": 1.0,
     "depth_to_noise_ratio": 0.0,
     "phase_shape_kurtosis": 0.0,
+    "bls_sde": 0.0,
+    "secondary_eclipse_depth": 0.0,
+    "centroid_shift": 0.0,
+    "crowding_metric": 1.0,
+    "gaia_neighbor_count": 0,
 }
 
 # Minimum in-transit points needed to compute shape features reliably
@@ -116,6 +126,7 @@ def extract(
     flux: np.ndarray,
     bls_result: BLSResult,
     config: dict | None = None,
+    metadata: dict | None = None,
 ) -> FeatureResult:
     """
     Compute all 11 features from the cleaned light curve and BLS result.
@@ -257,8 +268,32 @@ def extract(
         features["phase_shape_kurtosis"] = 0.0
         reliable["phase_shape_kurtosis"] = False
 
+    # ── Feature 12: bls_sde ──────────────────────────────────────────────
+    from core.detection_significance import calculate_sde
+    if hasattr(bls_result, "power") and bls_result.power is not None:
+        features["bls_sde"] = calculate_sde(bls_result.power)
+    else:
+        features["bls_sde"] = 0.0
+
+    # ── Feature 13: secondary_eclipse_depth ──────────────────────────────
+    from core.alias_resolver import resolve_aliases
+    alias_res = resolve_aliases(time, flux, period, t0, duration, depth)
+    features["secondary_eclipse_depth"] = alias_res["secondary_eclipse_depth"]
+
+    # Update odd_even_depth_delta if alias resolver has a better one
+    if reliable["odd_even_depth_delta"] and alias_res["odd_even_delta"] > 0:
+        features["odd_even_depth_delta"] = alias_res["odd_even_delta"]
+
+    # ── Features 14-16: blend features ───────────────────────────────────
+    from core.blend_features import extract_blend_features
+    target_id = (metadata or {}).get("target_id", "unknown")
+    blend_feats = extract_blend_features(target_id, time, flux, metadata)
+    features["centroid_shift"] = blend_feats["centroid_shift"]
+    features["crowding_metric"] = blend_feats["crowding_metric"]
+    features["gaia_neighbor_count"] = blend_feats["gaia_neighbor_count"]
+
     if not bls_result.candidate_detected:
-        for k in ["odd_even_depth_delta", "v_shape_score", "phase_shape_kurtosis"]:
+        for k in ["odd_even_depth_delta", "v_shape_score", "phase_shape_kurtosis", "secondary_eclipse_depth"]:
             features[k] = _FALLBACK[k]
             reliable[k] = False
 
@@ -267,10 +302,11 @@ def extract(
 
     logger.info(
         "feature_extractor: depth=%.4f snr=%.1f power=%.4f period=%.4fd "
-        "odd_even=%.4f v_shape=%.3f kurtosis=%.3f",
+        "odd_even=%.4f v_shape=%.3f sde=%.2f secondary_depth=%.4f crowding=%.2f",
         features["depth"], features["snr"], features["bls_power"],
         features["period_days"], features["odd_even_depth_delta"],
-        features["v_shape_score"], features["phase_shape_kurtosis"],
+        features["v_shape_score"], features["bls_sde"],
+        features["secondary_eclipse_depth"], features["crowding_metric"],
     )
 
     return FeatureResult(

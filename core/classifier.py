@@ -37,7 +37,7 @@ from core.exceptions import ClassificationError
 logger = logging.getLogger(__name__)
 
 # Canonical allowed class labels
-CLASSES = ("exoplanet_like", "eclipsing_binary_like", "noise_or_other")
+CLASSES = ("exoplanet_transit", "eclipsing_binary", "blend_contamination", "stellar_variability_or_other")
 
 # Default path to rule config — resolved relative to this file's location
 _DEFAULT_RULE_CONFIG_PATH = Path(__file__).parent.parent / "models" / "rule_config.yaml"
@@ -58,7 +58,7 @@ class ClassificationResult:
     Attributes
     ----------
     predicted_class : str
-        One of "exoplanet_like", "eclipsing_binary_like", "noise_or_other".
+        One of "exoplanet_transit", "eclipsing_binary", "blend_contamination", "stellar_variability_or_other".
     rule_path : list[str]
         Ordered list of rule conditions evaluated to reach the decision.
         Each entry is a human-readable condition string, e.g.
@@ -69,6 +69,8 @@ class ClassificationResult:
         True if rule-based and ML predictions agree (or ML not active).
     thresholds : dict
         The threshold values used in this classification (for explanation).
+    class_probabilities : dict[str, float]
+        Calibrated probabilities for each class.
     """
 
     def __init__(
@@ -78,7 +80,17 @@ class ClassificationResult:
         ml_class: Optional[str] = None,
         ml_agreement: bool = True,
         thresholds: dict | None = None,
+        class_probabilities: dict[str, float] | None = None,
     ):
+        aliases = {
+            "exoplanet_like": "exoplanet_transit",
+            "eclipsing_binary_like": "eclipsing_binary",
+            "noise_or_other": "stellar_variability_or_other"
+        }
+        predicted_class = aliases.get(predicted_class, predicted_class)
+        if ml_class is not None:
+            ml_class = aliases.get(ml_class, ml_class)
+            
         if predicted_class not in CLASSES:
             raise ClassificationError(
                 f"predicted_class must be one of {CLASSES}, got '{predicted_class}'"
@@ -88,6 +100,7 @@ class ClassificationResult:
         self.ml_class = ml_class
         self.ml_agreement = ml_agreement
         self.thresholds = thresholds or {}
+        self.class_probabilities = class_probabilities or {}
 
 
 # ---------------------------------------------------------------------------
@@ -153,28 +166,7 @@ def classify(
     rule_config_path: str | None = None,
 ) -> ClassificationResult:
     """
-    Classify a feature vector into one of the three transit signal classes.
-
-    Parameters
-    ----------
-    features : dict[str, float]
-        The 11-feature dict from feature_extractor.extract().
-    config : dict or None
-        Optional runtime overrides. Recognised key:
-            "classification" — override classification thresholds dict.
-    rule_config_path : str or None
-        Path to rule_config.yaml. Uses default models/ location if None.
-
-    Returns
-    -------
-    ClassificationResult
-        Contains predicted_class, rule_path (decision trace), and optional
-        ML model prediction.
-
-    Raises
-    ------
-    ClassificationError
-        If rule_config.yaml is missing, malformed, or produces an invalid class.
+    Classify a feature vector into one of the four transit signal classes.
     """
     rule_cfg = _load_rule_config(rule_config_path)
 
@@ -202,16 +194,25 @@ def classify(
     rule_result = _apply_rules(features, clf_thresholds, det_thresholds)
 
     # Stage 1 Detection gate bypass: if it is noise because of Stage 1 fail, bypass ML
-    if rule_result.predicted_class == "noise_or_other" and any("Stage 1 FAIL" in s for s in rule_result.rule_path):
-        logger.info("classifier: candidate failed Stage 1 detection gate — forcing noise_or_other")
-        return rule_result
+    if rule_result.predicted_class == "stellar_variability_or_other" and any("Stage 1 FAIL" in s for s in rule_result.rule_path):
+        logger.info("classifier: candidate failed Stage 1 detection gate — forcing stellar_variability_or_other")
+        # Build default probabilities for noise
+        class_probabilities = {cls: 0.0 for cls in CLASSES}
+        class_probabilities["stellar_variability_or_other"] = 1.0
+        return ClassificationResult(
+            predicted_class="stellar_variability_or_other",
+            rule_path=rule_result.rule_path,
+            thresholds=rule_result.thresholds,
+            class_probabilities=class_probabilities
+        )
 
     ml_class = None
     ml_agreement = True
+    class_probabilities = None
 
     if ml_enabled:
         try:
-            ml_class = _run_ml_classifier(features, rule_cfg, rule_config_path)
+            ml_class, class_probabilities = _run_ml_classifier(features, rule_cfg, rule_config_path)
             ml_agreement = (ml_class == rule_result.predicted_class)
         except Exception as exc:
             if dev_fallback:
@@ -239,6 +240,17 @@ def classify(
 
     predicted_class = ml_class if ml_class is not None else rule_result.predicted_class
 
+    if class_probabilities is None:
+        # Build simulated probabilities from rule confidence
+        from core.confidence import score
+        conf = score(features, predicted_class, rule_config_path=rule_config_path)
+        class_probabilities = {}
+        for cls in CLASSES:
+            if cls == predicted_class:
+                class_probabilities[cls] = float(conf)
+            else:
+                class_probabilities[cls] = float((1.0 - conf) / 3.0)
+
     logger.info(
         "classifier: predicted_class='%s' (ml_class=%s, rule_class=%s, agreement=%s)",
         predicted_class, ml_class, rule_result.predicted_class, ml_agreement,
@@ -250,6 +262,7 @@ def classify(
         ml_class=ml_class,
         ml_agreement=ml_agreement,
         thresholds=rule_result.thresholds,
+        class_probabilities=class_probabilities,
     )
 
 
@@ -269,17 +282,19 @@ def _apply_rules(
 
         Stage 1 (Detection gate):
             SNR < snr_threshold OR BLS power < bls_power_threshold
-            → noise_or_other
+            → stellar_variability_or_other
 
         Stage 2 (Primary depth discriminator):
             depth > depth_threshold_eb
-            → eclipsing_binary_like
+            → eclipsing_binary
 
         Stage 3 (Secondary discriminators, within planet-like depth range):
-            odd_even_depth_delta > odd_even_threshold  → eclipsing_binary_like
-            v_shape_score > v_shape_threshold          → eclipsing_binary_like
-            depth_to_noise_ratio < depth_snr_threshold → noise_or_other
-            all pass                                   → exoplanet_like
+            odd_even_depth_delta > odd_even_threshold   → eclipsing_binary
+            v_shape_score > v_shape_threshold           → eclipsing_binary
+            depth_to_noise_ratio < depth_snr_threshold  → stellar_variability_or_other
+            crowding_metric < crowding_threshold        → blend_contamination
+            centroid_shift > centroid_shift_threshold   → blend_contamination
+            all pass                                    → exoplanet_transit
     """
     rule_path: list[str] = []
 
@@ -290,6 +305,8 @@ def _apply_rules(
     odd_even    = float(features.get("odd_even_depth_delta", 0.0))
     v_shape     = float(features.get("v_shape_score", 0.0))
     dtnr        = float(features.get("depth_to_noise_ratio", 0.0))
+    crowding    = float(features.get("crowding_metric", 1.0))
+    centroid_sh = float(features.get("centroid_shift", 0.0))
 
     # Thresholds from config
     power_thresh  = float(det_thresholds.get("bls_power_threshold", 0.15))
@@ -298,6 +315,8 @@ def _apply_rules(
     odd_even_thr  = float(clf_thresholds.get("odd_even_threshold", 0.020))
     v_shape_thr   = float(clf_thresholds.get("v_shape_threshold", 0.40))
     dtnr_thr      = float(clf_thresholds.get("depth_snr_threshold", 6.0))
+    crowding_thr  = float(clf_thresholds.get("crowding_threshold", 0.80))
+    shift_thr     = float(clf_thresholds.get("centroid_shift_threshold", 0.015))
 
     thresholds_used = {
         "bls_power_threshold": power_thresh,
@@ -306,6 +325,8 @@ def _apply_rules(
         "odd_even_threshold": odd_even_thr,
         "v_shape_threshold": v_shape_thr,
         "depth_snr_threshold": dtnr_thr,
+        "crowding_threshold": crowding_thr,
+        "centroid_shift_threshold": shift_thr,
     }
 
     # ── Stage 1: Detection gate ───────────────────────────────────────────
@@ -323,9 +344,9 @@ def _apply_rules(
                 f"snr={snr:.2f} < threshold={snr_thresh:.1f}"
             )
         rule_path.append(
-            f"Stage 1 FAIL [{'; '.join(reason_parts)}] → noise_or_other"
+            f"Stage 1 FAIL [{'; '.join(reason_parts)}] → stellar_variability_or_other"
         )
-        return ClassificationResult("noise_or_other", rule_path, thresholds=thresholds_used)
+        return ClassificationResult("stellar_variability_or_other", rule_path, thresholds=thresholds_used)
 
     rule_path.append(
         f"Stage 1 PASS [bls_power={bls_power:.4f} >= {power_thresh:.3f}; "
@@ -336,10 +357,10 @@ def _apply_rules(
     if depth > depth_eb:
         rule_path.append(
             f"Stage 2 MATCH [depth={depth:.4f} > depth_threshold_eb={depth_eb:.3f}] "
-            f"→ eclipsing_binary_like"
+            f"→ eclipsing_binary"
         )
         return ClassificationResult(
-            "eclipsing_binary_like", rule_path, thresholds=thresholds_used
+            "eclipsing_binary", rule_path, thresholds=thresholds_used
         )
 
     rule_path.append(
@@ -352,10 +373,10 @@ def _apply_rules(
     if odd_even > odd_even_thr:
         rule_path.append(
             f"Stage 3a MATCH [odd_even_delta={odd_even:.4f} > threshold={odd_even_thr:.3f}] "
-            f"→ eclipsing_binary_like"
+            f"→ eclipsing_binary"
         )
         return ClassificationResult(
-            "eclipsing_binary_like", rule_path, thresholds=thresholds_used
+            "eclipsing_binary", rule_path, thresholds=thresholds_used
         )
     rule_path.append(
         f"Stage 3a PASS [odd_even_delta={odd_even:.4f} <= {odd_even_thr:.3f}]"
@@ -365,10 +386,10 @@ def _apply_rules(
     if v_shape > v_shape_thr:
         rule_path.append(
             f"Stage 3b MATCH [v_shape_score={v_shape:.4f} > threshold={v_shape_thr:.3f}] "
-            f"→ eclipsing_binary_like"
+            f"→ eclipsing_binary"
         )
         return ClassificationResult(
-            "eclipsing_binary_like", rule_path, thresholds=thresholds_used
+            "eclipsing_binary", rule_path, thresholds=thresholds_used
         )
     rule_path.append(
         f"Stage 3b PASS [v_shape_score={v_shape:.4f} <= {v_shape_thr:.3f}]"
@@ -378,16 +399,32 @@ def _apply_rules(
     if dtnr < dtnr_thr:
         rule_path.append(
             f"Stage 3c MATCH [depth_to_noise_ratio={dtnr:.2f} < threshold={dtnr_thr:.1f}] "
-            f"→ noise_or_other"
+            f"→ stellar_variability_or_other"
         )
-        return ClassificationResult("noise_or_other", rule_path, thresholds=thresholds_used)
+        return ClassificationResult("stellar_variability_or_other", rule_path, thresholds=thresholds_used)
     rule_path.append(
         f"Stage 3c PASS [depth_to_noise_ratio={dtnr:.2f} >= {dtnr_thr:.1f}]"
     )
 
-    # All checks passed → exoplanet-like
-    rule_path.append("All stages passed → exoplanet_like")
-    return ClassificationResult("exoplanet_like", rule_path, thresholds=thresholds_used)
+    # 3d: Blend and Crowding Diagnostics
+    if crowding < crowding_thr or centroid_sh > shift_thr:
+        reason_parts = []
+        if crowding < crowding_thr:
+            reason_parts.append(f"crowding_metric={crowding:.2f} < threshold={crowding_thr:.2f}")
+        if centroid_sh > shift_thr:
+            reason_parts.append(f"centroid_shift={centroid_sh:.4f} > threshold={shift_thr:.3f}")
+        rule_path.append(
+            f"Stage 3d MATCH [{'; '.join(reason_parts)}] → blend_contamination"
+        )
+        return ClassificationResult("blend_contamination", rule_path, thresholds=thresholds_used)
+    rule_path.append(
+        f"Stage 3d PASS [crowding_metric={crowding:.2f} >= {crowding_thr:.2f}; "
+        f"centroid_shift={centroid_sh:.4f} <= {shift_thr:.3f}]"
+    )
+
+    # All checks passed → exoplanet_transit
+    rule_path.append("All stages passed → exoplanet_transit")
+    return ClassificationResult("exoplanet_transit", rule_path, thresholds=thresholds_used)
 
 
 # ---------------------------------------------------------------------------
@@ -450,11 +487,16 @@ def _run_ml_classifier(
     scaled = scaler.transform(feature_vec)
 
     probas = model.predict_proba(scaled)[0]
-    class_idx = int(np.argmax(probas))
-
-    # Map index back to class label (assumes model was trained with CLASSES order)
     model_classes = list(model.classes_)
+    class_probabilities = {str(cls): float(prob) for cls, prob in zip(model_classes, probas)}
+    # Fill in any missing classes from CLASSES
+    for cls in CLASSES:
+        if cls not in class_probabilities:
+            class_probabilities[cls] = 0.0
+            
+    class_idx = int(np.argmax(probas))
     if class_idx < len(model_classes):
-        return str(model_classes[class_idx])
+        predicted_class = str(model_classes[class_idx])
+        return predicted_class, class_probabilities
 
     raise ClassificationError(f"ML model returned unexpected class index {class_idx}")

@@ -1,14 +1,15 @@
 # Model Card: TransitLens Stochastic Classifier
-- Trained at: 2026-06-26T06:23:07.632677+00:00
-- Samples: 150 total targets (Kepler KOIs & TESS TOIs combined)
-- RF Validation Accuracy: 86.8421%
-- XGBoost Validation Accuracy: 81.5789%
+- Trained at: 2026-06-26T07:13:19.830092+00:00
+- Samples: 200 total targets (Kepler KOIs & TESS TOIs combined)
+- RF Validation Accuracy: 64.0000%
+- XGBoost Validation Accuracy: 62.0000%
 
 ## Label Mapping
 {
-  "0": "eclipsing_binary_like",
-  "1": "exoplanet_like",
-  "2": "noise_or_other"
+  "0": "blend_contamination",
+  "1": "eclipsing_binary",
+  "2": "exoplanet_transit",
+  "3": "stellar_variability_or_other"
 }
 
 ## Features (in canonical order)
@@ -23,5 +24,10 @@
   "v_shape_score",
   "local_noise",
   "depth_to_noise_ratio",
-  "phase_shape_kurtosis"
+  "phase_shape_kurtosis",
+  "bls_sde",
+  "secondary_eclipse_depth",
+  "centroid_shift",
+  "crowding_metric",
+  "gaia_neighbor_count"
 ]

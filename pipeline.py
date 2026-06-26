@@ -195,7 +195,7 @@ def analyze_light_curve(
     # ── Stage 3: Feature Extraction ───────────────────────────────────────
     try:
         feature_cfg = cfg.get("features", {})
-        feature_result = extract(time_clean, flux_clean, bls_result, config=feature_cfg)
+        feature_result = extract(time_clean, flux_clean, bls_result, config=feature_cfg, metadata=metadata)
         features = feature_result.features
     except Exception as exc:
         logger.error("pipeline: feature extraction failed: %s", exc)
@@ -256,10 +256,67 @@ def analyze_light_curve(
         feature_result=feature_result,
     )
 
+    # ── Stage 7.5: Scientific Fitting and Uncertainties ─────────────────────
+    candidate_detected = bls_result.candidate_detected
+    bootstrap_fap = None
+    period_uncertainty_days = None
+    duration_uncertainty_days = None
+    depth_uncertainty = None
+    epoch_btjd = None
+    fit_quality = None
+
+    if candidate_detected:
+        try:
+            from core.transit_fitter import fit_transit
+            from core.uncertainty import estimate_uncertainties
+            from core.detection_significance import calculate_bootstrap_fap
+
+            init_period = bls_result.best_period
+            init_t0 = bls_result.best_t0
+            init_duration = bls_result.best_duration
+            init_depth = bls_result.best_depth
+
+            fit_res = fit_transit(
+                time_clean,
+                flux_clean,
+                init_period=init_period,
+                init_t0=init_t0,
+                init_duration=init_duration,
+                init_depth=init_depth,
+            )
+
+            epoch_btjd = fit_res.get("epoch_btjd")
+            fit_quality = fit_res.get("fit_quality")
+
+            time_span = float(np.max(time_clean) - np.min(time_clean)) if len(time_clean) > 0 else 0.0
+            unc = estimate_uncertainties(fit_res, time_span, bls_result.snr)
+
+            period_uncertainty_days = unc.get("period_uncertainty_days")
+            duration_uncertainty_days = unc.get("duration_uncertainty_days")
+            depth_uncertainty = unc.get("depth_uncertainty")
+
+            fap_cfg = cfg.get("significance", {})
+            fap_iter = fap_cfg.get("bootstrap_iterations", 50)
+            bootstrap_fap = calculate_bootstrap_fap(
+                time_clean,
+                flux_clean,
+                period=init_period,
+                t0=epoch_btjd if epoch_btjd is not None else init_t0,
+                duration=fit_res.get("duration_days", init_duration),
+                depth=fit_res.get("depth", init_depth),
+                n_iter=fap_iter,
+            )
+        except Exception as exc:
+            logger.error("pipeline: transit fitting or uncertainty calculation failed: %s", exc)
+
+    from core.classifier import CLASSES
+    class_probabilities = getattr(classification_result, "class_probabilities", None)
+    if class_probabilities is None:
+        class_probabilities = {cls: 0.0 for cls in CLASSES}
+        class_probabilities[predicted_class] = 1.0
+
     # ── Stage 8: Assemble result dict ─────────────────────────────────────
     processing_time_ms = (_time.perf_counter() - wall_start) * 1000
-
-    candidate_detected = bls_result.candidate_detected
 
     result = {
         "target_id": target_id,
@@ -272,7 +329,15 @@ def analyze_light_curve(
         "depth":          round(bls_result.best_depth, 6)    if candidate_detected else None,
         "snr":            round(bls_result.snr, 4)           if candidate_detected else None,
         "transit_count":  features["transit_count"]          if candidate_detected else None,
-        # Full 11-feature vector
+        # Scientific uncertainties and significance
+        "bootstrap_fap":             round(bootstrap_fap, 6) if (candidate_detected and bootstrap_fap is not None) else None,
+        "class_probabilities":        {cls: round(float(prob), 6) for cls, prob in class_probabilities.items()},
+        "period_uncertainty_days":   round(period_uncertainty_days, 8) if (candidate_detected and period_uncertainty_days is not None) else None,
+        "duration_uncertainty_days": round(duration_uncertainty_days, 8) if (candidate_detected and duration_uncertainty_days is not None) else None,
+        "depth_uncertainty":         round(depth_uncertainty, 8) if (candidate_detected and depth_uncertainty is not None) else None,
+        "epoch_btjd":                round(epoch_btjd, 6) if (candidate_detected and epoch_btjd is not None) else None,
+        "fit_quality":                round(fit_quality, 6) if (candidate_detected and fit_quality is not None) else None,
+        # Full feature vector
         "features": {k: round(float(v), 8) for k, v in features.items()},
         # Human-readable explanation
         "explanation": explanation,
@@ -360,13 +425,13 @@ def _build_explanation(
 ) -> str:
     """
     Build a specific, human-readable explanation of the classification.
-
-    Format (one paragraph):
-        - Predicted class and confidence.
-        - Detection parameters (period, depth, SNR) if detected.
-        - Top 2–3 driving features with plain-language interpretation.
-        - Any caveats (alias warning, low transit count, ML disagreement).
     """
+    aliases = {
+        "exoplanet_like": "exoplanet_transit",
+        "eclipsing_binary_like": "eclipsing_binary",
+        "noise_or_other": "stellar_variability_or_other",
+    }
+    predicted_class = aliases.get(predicted_class, predicted_class)
     pct = int(round(confidence * 100))
     lines: list[str] = []
 
@@ -379,9 +444,9 @@ def _build_explanation(
     n_tr     = int(features.get("transit_count", 0))
     duration = features.get("duration_days", 0.0)
 
-    if predicted_class == "exoplanet_like":
+    if predicted_class == "exoplanet_transit":
         lines.append(
-            f"Classified as exoplanet_like with {pct}% confidence. "
+            f"Classified as exoplanet_transit with {pct}% confidence. "
             f"A periodic transit signal was detected at {period:.4f} days "
             f"with a depth of {depth*100:.2f}% ({snr:.1f}\u03c3 above noise). "
             f"The depth is consistent with a sub-Jupiter-sized planet transiting a Sun-like star."
@@ -397,9 +462,9 @@ def _build_explanation(
             f"(transit duration \u2248 {duration*24:.1f} hours)."
         )
 
-    elif predicted_class == "eclipsing_binary_like":
+    elif predicted_class == "eclipsing_binary":
         lines.append(
-            f"Classified as eclipsing_binary_like with {pct}% confidence. "
+            f"Classified as eclipsing_binary with {pct}% confidence. "
             f"A strong periodic signal was detected at {period:.4f} days "
             f"with depth {depth*100:.2f}% (SNR = {snr:.1f})."
         )
@@ -421,9 +486,16 @@ def _build_explanation(
                 f"with a grazing or total stellar eclipse rather than a planetary transit."
             )
 
-    else:  # noise_or_other
+    elif predicted_class == "blend_contamination":
         lines.append(
-            f"Classified as noise_or_other with {pct}% confidence. "
+            f"Classified as blend_contamination with {pct}% confidence. "
+            f"A periodic transit-like signal was detected at {period:.4f} days, "
+            f"but diagnostics indicate nearby stellar companion or centroid displacement. "
+            f"The observed depth of {depth*100:.2f}% may be diluted by crowding."
+        )
+    else:  # stellar_variability_or_other
+        lines.append(
+            f"Classified as stellar_variability_or_other with {pct}% confidence. "
             f"No significant periodic transit signal was detected in this light curve."
         )
         lines.append(
@@ -468,9 +540,6 @@ def _error_result(
 ) -> dict:
     """
     Return a well-formed result dict when the pipeline fails internally.
-
-    All invariants are satisfied: candidate_detected=False, all nullable
-    top-level fields are None, all four plot keys present as empty strings.
     """
     processing_time_ms = (_time.perf_counter() - wall_start) * 1000
     from core.feature_extractor import FEATURE_NAMES, _FALLBACK
@@ -478,13 +547,25 @@ def _error_result(
     return {
         "target_id": target_id,
         "candidate_detected": False,
-        "predicted_class": "noise_or_other",
+        "predicted_class": "stellar_variability_or_other",
         "confidence": 0.0,
         "period_days": None,
         "duration_days": None,
         "depth": None,
         "snr": None,
         "transit_count": None,
+        "bootstrap_fap": None,
+        "class_probabilities": {
+            "exoplanet_transit": 0.0,
+            "eclipsing_binary": 0.0,
+            "blend_contamination": 0.0,
+            "stellar_variability_or_other": 1.0,
+        },
+        "period_uncertainty_days": None,
+        "duration_uncertainty_days": None,
+        "depth_uncertainty": None,
+        "epoch_btjd": None,
+        "fit_quality": None,
         "features": {k: float(_FALLBACK[k]) for k in FEATURE_NAMES},
         "explanation": explanation,
         "plots": {
@@ -511,7 +592,11 @@ def _check_invariants(result: dict) -> None:
     detected = result["candidate_detected"]
 
     # Invariant 1: nullable fields are consistent with detection status
-    nullable = ["period_days", "duration_days", "depth", "snr", "transit_count"]
+    nullable = [
+        "period_days", "duration_days", "depth", "snr", "transit_count",
+        "bootstrap_fap", "period_uncertainty_days", "duration_uncertainty_days",
+        "depth_uncertainty", "epoch_btjd", "fit_quality"
+    ]
     if not detected:
         for key in nullable:
             if result[key] is not None:
@@ -536,14 +621,14 @@ def _check_invariants(result: dict) -> None:
         )
         result["confidence"] = float(np.clip(float(conf), 0.0, 1.0))
 
-    # Invariant 3: predicted_class is always one of the three allowed strings
+    # Invariant 3: predicted_class is always one of the allowed strings
     from core.classifier import CLASSES
     if result["predicted_class"] not in CLASSES:
         logger.warning(
             "invariant violation: predicted_class='%s' not in CLASSES — "
-            "setting to noise_or_other", result["predicted_class"]
+            "setting to stellar_variability_or_other", result["predicted_class"]
         )
-        result["predicted_class"] = "noise_or_other"
+        result["predicted_class"] = "stellar_variability_or_other"
 
     # Invariant 4: all four plot keys are always present
     required_plots = {"raw_lightcurve", "cleaned_lightcurve", "periodogram", "phase_folded"}
@@ -558,7 +643,7 @@ def _check_invariants(result: dict) -> None:
     if not result.get("explanation"):
         result["explanation"] = "Analysis complete."
 
-    # Invariant 6: features dict has exactly 11 keys
+    # Invariant 6: features dict has exactly 16 keys
     from core.feature_extractor import FEATURE_NAMES
     if set(result["features"].keys()) != set(FEATURE_NAMES):
         logger.warning("invariant: features dict has wrong keys")

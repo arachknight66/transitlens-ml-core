@@ -19,7 +19,13 @@ from typing import NamedTuple
 
 logger = logging.getLogger(__name__)
 
-CLASSES = ("exoplanet_like", "eclipsing_binary_like", "noise_or_other")
+CLASSES = (
+    "exoplanet_transit",
+    "eclipsing_binary",
+    "blend_contamination",
+    "stellar_variability_or_other",
+)
+
 
 
 # ---------------------------------------------------------------------------
@@ -120,21 +126,29 @@ def classification_report(
         accuracy : float in [0, 1]
         per_class_metrics : list of ClassMetrics (one per class in CLASSES)
     """
-    n = len(true_labels)
+    aliases = {
+        "exoplanet_like": "exoplanet_transit",
+        "eclipsing_binary_like": "eclipsing_binary",
+        "noise_or_other": "stellar_variability_or_other",
+    }
+    true_mapped = [aliases.get(t, t) for t in true_labels]
+    pred_mapped = [aliases.get(p, p) for p in pred_labels]
+
+    n = len(true_mapped)
     if n == 0:
         return 0.0, []
 
-    correct = sum(t == p for t, p in zip(true_labels, pred_labels))
+    correct = sum(t == p for t, p in zip(true_mapped, pred_mapped))
     accuracy = correct / n
 
-    true_counts = Counter(true_labels)
-    pred_counts = Counter(pred_labels)
+    true_counts = Counter(true_mapped)
+    pred_counts = Counter(pred_mapped)
 
     per_class = []
     for cls in CLASSES:
-        tp = sum(1 for t, p in zip(true_labels, pred_labels) if t == cls and p == cls)
-        fp = sum(1 for t, p in zip(true_labels, pred_labels) if t != cls and p == cls)
-        fn = sum(1 for t, p in zip(true_labels, pred_labels) if t == cls and p != cls)
+        tp = sum(1 for t, p in zip(true_mapped, pred_mapped) if t == cls and p == cls)
+        fp = sum(1 for t, p in zip(true_mapped, pred_mapped) if t != cls and p == cls)
+        fn = sum(1 for t, p in zip(true_mapped, pred_mapped) if t == cls and p != cls)
 
         precision = tp / (tp + fp) if (tp + fp) > 0 else 0.0
         recall = tp / (tp + fn) if (tp + fn) > 0 else 0.0

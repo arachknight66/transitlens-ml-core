@@ -356,11 +356,53 @@ def _detrend(
         return _detrend_running_median(time, flux, window_days)
     elif method == "polynomial":
         return _detrend_polynomial(time, flux, poly_degree)
+    elif method == "savgol":
+        return _detrend_savgol(time, flux, window_days)
+    elif method == "spline":
+        return _detrend_spline(time, flux, window_days)
     else:
         raise ValueError(
             f"Unknown detrend method '{method}'. "
-            "Expected 'running_median' or 'polynomial'."
+            "Expected 'running_median', 'polynomial', 'savgol', or 'spline'."
         )
+
+
+def _detrend_savgol(
+    time: np.ndarray,
+    flux: np.ndarray,
+    window_days: float,
+) -> np.ndarray:
+    """Divide flux by a Savitzky-Golay filtered baseline."""
+    from scipy.signal import savgol_filter
+    cadence = estimate_cadence(time)
+    window_points = max(3, int(round(window_days / cadence)))
+    if window_points % 2 == 0:
+        window_points += 1
+    if window_points >= len(flux):
+        window_points = len(flux) - 1
+        if window_points % 2 == 0:
+            window_points -= 1
+        if window_points < 3:
+            return flux.copy()
+    baseline = savgol_filter(flux, window_length=window_points, polyorder=2)
+    baseline = np.where(np.abs(baseline) < 1e-10, 1.0, baseline)
+    return flux / baseline
+
+
+def _detrend_spline(
+    time: np.ndarray,
+    flux: np.ndarray,
+    window_days: float,
+) -> np.ndarray:
+    """Divide flux by a UnivariateSpline baseline fit."""
+    from scipy.interpolate import UnivariateSpline
+    # Determine degree and smoothing based on window_days
+    spl = UnivariateSpline(time, flux, k=3)
+    # smoothing factor s balances fitting vs smoothness
+    spl.set_smoothing_factor(len(time) * 0.0001)
+    baseline = spl(time)
+    baseline = np.where(np.abs(baseline) < 1e-10, 1.0, baseline)
+    return flux / baseline
 
 
 def _detrend_running_median(

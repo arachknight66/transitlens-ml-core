@@ -4,7 +4,7 @@ tests/test_features.py
 Tests for core/feature_extractor.py (Phase 3).
 
 Covers:
-    - Exactly 11 features returned with correct keys
+    - Exactly 16 features returned with correct keys
     - No NaN or inf values in any feature
     - Feature values are physically correct for all three synthetic candidates
     - Fallback behavior for no-candidate case
@@ -140,15 +140,15 @@ class TestFeatureStructure:
     def test_returns_feature_result(self, features_a):
         assert isinstance(features_a, FeatureResult)
 
-    def test_exactly_11_features(self, features_a, features_b, features_c):
+    def test_exactly_16_features(self, features_a, features_b, features_c):
         for fr in [features_a, features_b, features_c]:
-            assert len(fr.features) == 11, f"Expected 11 features, got {len(fr.features)}"
+            assert len(fr.features) == 16, f"Expected 11 features, got {len(fr.features)}"
 
     def test_correct_feature_keys(self, features_a):
         assert set(features_a.features.keys()) == set(FEATURE_NAMES)
 
-    def test_exactly_11_reliability_flags(self, features_a):
-        assert len(features_a.reliable) == 11
+    def test_exactly_16_reliability_flags(self, features_a):
+        assert len(features_a.reliable) == 16
 
     def test_reliable_keys_match_feature_keys(self, features_a):
         assert set(features_a.reliable.keys()) == set(FEATURE_NAMES)
@@ -162,8 +162,8 @@ class TestFeatureStructure:
         assert isinstance(arr, np.ndarray)
         assert arr.dtype == float
 
-    def test_as_array_length_11(self, features_a):
-        assert len(features_a.as_array()) == 11
+    def test_as_array_length_16(self, features_a):
+        assert len(features_a.as_array()) == 16
 
     def test_as_array_matches_feature_dict_order(self, features_a):
         arr = features_a.as_array()
@@ -305,8 +305,8 @@ class TestCandidateCFeatures:
     def test_candidate_detected_false(self, features_c):
         assert features_c.candidate_detected is False
 
-    def test_all_11_features_present(self, features_c):
-        assert len(features_c.features) == 11
+    def test_all_16_features_present(self, features_c):
+        assert len(features_c.features) == 16
 
     def test_no_nan_in_noise_features(self, features_c):
         for k, v in features_c.features.items():
@@ -477,7 +477,7 @@ class TestConfigOverrides:
     def test_phase_bins_override(self, candidate_a_data, result_a):
         t, f = candidate_a_data
         fr = extract(t, f, result_a, config={"phase_bins": 50})
-        assert len(fr.features) == 11
+        assert len(fr.features) == 16
 
     def test_noise_exclusion_factor_override(self, candidate_a_data, result_a):
         t, f = candidate_a_data

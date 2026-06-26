@@ -146,8 +146,13 @@ def run_evaluation() -> None:
             metadata=case["metadata"],
         )
 
-        true_label = case["metadata"].get("true_label", "unknown")
-        pred_label = result["predicted_class"]
+        aliases = {
+            "exoplanet_like": "exoplanet_transit",
+            "eclipsing_binary_like": "eclipsing_binary",
+            "noise_or_other": "stellar_variability_or_other",
+        }
+        true_label = aliases.get(case["metadata"].get("true_label", "unknown"), "stellar_variability_or_other")
+        pred_label = aliases.get(result["predicted_class"], result["predicted_class"])
 
         results.append({**result, "metadata": case["metadata"]})
         true_labels.append(true_label)
@@ -196,8 +201,8 @@ def _save_confusion_matrix(
         matplotlib.use("Agg")
         import matplotlib.pyplot as plt
 
-        classes = ["exoplanet_like", "eclipsing_binary_like", "noise_or_other"]
-        short = ["Exoplanet", "EB", "Noise"]
+        classes = ["exoplanet_transit", "eclipsing_binary", "blend_contamination", "stellar_variability_or_other"]
+        short = ["Planet", "EB", "Blend", "Noise"]
         n = len(classes)
         matrix = np.zeros((n, n), dtype=int)
 

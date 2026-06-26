@@ -70,7 +70,7 @@ def test_missing_model_falls_back_when_fallback_enabled(tmp_path, sample_feature
     
     # Should not raise exception
     res = classify(sample_features, rule_config_path=config_path)
-    assert res.predicted_class == "exoplanet_like"  # fallback rule-based classification
+    assert res.predicted_class == "exoplanet_transit"  # fallback rule-based classification
     assert res.ml_class is None
     assert res.ml_agreement is True
     

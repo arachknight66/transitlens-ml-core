@@ -34,6 +34,8 @@ from core.feature_extractor import FEATURE_NAMES
 REQUIRED_KEYS = {
     "target_id", "candidate_detected", "predicted_class", "confidence",
     "period_days", "duration_days", "depth", "snr", "transit_count",
+    "bootstrap_fap", "class_probabilities", "period_uncertainty_days",
+    "duration_uncertainty_days", "depth_uncertainty", "epoch_btjd", "fit_quality",
     "features", "explanation", "plots",
     "processing_time_ms", "pipeline_version",
 }
@@ -81,19 +83,19 @@ class TestClassification:
     def test_candidate_a_is_exoplanet(self, synthetic_cases):
         case = synthetic_cases["a"]
         result = analyze_light_curve(case["time"], case["flux"], case["metadata"])
-        assert result["predicted_class"] == "exoplanet_like"
+        assert result["predicted_class"] == "exoplanet_transit"
         assert result["candidate_detected"] is True
 
     def test_candidate_b_is_eb(self, synthetic_cases):
         case = synthetic_cases["b"]
         result = analyze_light_curve(case["time"], case["flux"], case["metadata"])
-        assert result["predicted_class"] == "eclipsing_binary_like"
+        assert result["predicted_class"] == "eclipsing_binary"
         assert result["candidate_detected"] is True
 
     def test_candidate_c_is_noise(self, synthetic_cases):
         case = synthetic_cases["c"]
         result = analyze_light_curve(case["time"], case["flux"], case["metadata"])
-        assert result["predicted_class"] == "noise_or_other"
+        assert result["predicted_class"] == "stellar_variability_or_other"
         assert result["candidate_detected"] is False
 
 
@@ -109,7 +111,7 @@ class TestInvariants:
         case = synthetic_cases["c"]
         result = analyze_light_curve(case["time"], case["flux"], case["metadata"])
         assert result["candidate_detected"] is False
-        for key in ["period_days", "duration_days", "depth", "snr", "transit_count"]:
+        for key in ["period_days", "duration_days", "depth", "snr", "transit_count", "bootstrap_fap", "period_uncertainty_days", "duration_uncertainty_days", "depth_uncertainty", "epoch_btjd", "fit_quality"]:
             assert result[key] is None, f"{key} should be None when not detected"
 
     def test_detection_not_null(self, synthetic_cases):
@@ -117,7 +119,7 @@ class TestInvariants:
         case = synthetic_cases["a"]
         result = analyze_light_curve(case["time"], case["flux"], case["metadata"])
         assert result["candidate_detected"] is True
-        for key in ["period_days", "duration_days", "depth", "snr", "transit_count"]:
+        for key in ["period_days", "duration_days", "depth", "snr", "transit_count", "bootstrap_fap", "period_uncertainty_days", "duration_uncertainty_days", "depth_uncertainty", "epoch_btjd", "fit_quality"]:
             assert result[key] is not None, f"{key} should not be None when detected"
 
     def test_confidence_in_range(self, synthetic_cases):
@@ -127,7 +129,7 @@ class TestInvariants:
             assert 0.0 <= result["confidence"] <= 1.0
 
     def test_predicted_class_valid(self, synthetic_cases):
-        valid = {"exoplanet_like", "eclipsing_binary_like", "noise_or_other"}
+        valid = {"exoplanet_transit", "eclipsing_binary", "stellar_variability_or_other"}
         for cid in ["a", "b", "c"]:
             case = synthetic_cases[cid]
             result = analyze_light_curve(case["time"], case["flux"], case["metadata"])

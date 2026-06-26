@@ -1,8 +1,8 @@
 {
-  "timestamp": "2026-06-26T06:23:07.632677+00:00",
-  "n_samples": 150,
-  "rf_accuracy": 0.868421052631579,
-  "xgb_accuracy": 0.8157894736842105,
+  "timestamp": "2026-06-26T07:13:19.830092+00:00",
+  "n_samples": 200,
+  "rf_accuracy": 0.64,
+  "xgb_accuracy": 0.62,
   "features": [
     "bls_power",
     "snr",
@@ -14,11 +14,17 @@
     "v_shape_score",
     "local_noise",
     "depth_to_noise_ratio",
-    "phase_shape_kurtosis"
+    "phase_shape_kurtosis",
+    "bls_sde",
+    "secondary_eclipse_depth",
+    "centroid_shift",
+    "crowding_metric",
+    "gaia_neighbor_count"
   ],
   "label_mapping": {
-    "0": "eclipsing_binary_like",
-    "1": "exoplanet_like",
-    "2": "noise_or_other"
+    "0": "blend_contamination",
+    "1": "eclipsing_binary",
+    "2": "exoplanet_transit",
+    "3": "stellar_variability_or_other"
   }
 }

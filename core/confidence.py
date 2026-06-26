@@ -74,6 +74,13 @@ def score(
     if config and "confidence" in config:
         confidence_cfg.update(config["confidence"])
 
+    aliases = {
+        "exoplanet_like": "exoplanet_transit",
+        "eclipsing_binary_like": "eclipsing_binary",
+        "noise_or_other": "stellar_variability_or_other",
+    }
+    predicted_class = aliases.get(predicted_class, predicted_class)
+
     if predicted_class not in confidence_cfg:
         logger.warning(
             "confidence: no config for class '%s' — returning 0.5 as default",
@@ -217,6 +224,13 @@ def score_with_breakdown(
     confidence_cfg = dict(rule_cfg.get("confidence", {}))
     if config and "confidence" in config:
         confidence_cfg.update(config["confidence"])
+
+    aliases = {
+        "exoplanet_like": "exoplanet_transit",
+        "eclipsing_binary_like": "eclipsing_binary",
+        "noise_or_other": "stellar_variability_or_other",
+    }
+    predicted_class = aliases.get(predicted_class, predicted_class)
 
     if predicted_class not in confidence_cfg:
         return 0.5, []

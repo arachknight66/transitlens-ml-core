@@ -62,7 +62,7 @@ class AnalyzeRequest(BaseModel):
 # ---------------------------------------------------------------------------
 
 class FeaturesSchema(BaseModel):
-    """The 11 physically-interpretable features."""
+    """The 16 physically-interpretable features."""
     bls_power: float = 0.0
     snr: float = 0.0
     period_days: float = 0.0
@@ -74,6 +74,12 @@ class FeaturesSchema(BaseModel):
     local_noise: float = 0.0
     depth_to_noise_ratio: float = 0.0
     phase_shape_kurtosis: float = 0.0
+    bls_sde: float = 0.0
+    secondary_eclipse_depth: float = 0.0
+    centroid_shift: float = 0.0
+    crowding_metric: float = 1.0
+    gaia_neighbor_count: float = 0.0
+
 
 
 class PlotsSchema(BaseModel):
@@ -96,7 +102,7 @@ class AnalyzeResponse(BaseModel):
     """
     target_id: str = "unknown"
     candidate_detected: bool = False
-    predicted_class: str = "noise_or_other"
+    predicted_class: str = "stellar_variability_or_other"
     confidence: float = 0.0
 
     period_days: Optional[float] = None
@@ -104,6 +110,15 @@ class AnalyzeResponse(BaseModel):
     depth: Optional[float] = None
     snr: Optional[float] = None
     transit_count: Optional[int] = None
+
+    # Scientific uncertainties and significance
+    bootstrap_fap: Optional[float] = None
+    class_probabilities: Optional[dict[str, float]] = None
+    period_uncertainty_days: Optional[float] = None
+    duration_uncertainty_days: Optional[float] = None
+    depth_uncertainty: Optional[float] = None
+    epoch_btjd: Optional[float] = None
+    fit_quality: Optional[float] = None
 
     features: FeaturesSchema = Field(default_factory=FeaturesSchema)
     explanation: str = ""

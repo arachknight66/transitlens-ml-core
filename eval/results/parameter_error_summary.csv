@@ -1,0 +1,3 @@
+target_id,class,true_period,det_period,period_err_pct,true_depth,det_depth,depth_err_pct,true_duration,det_duration,duration_err_pct,fit_quality,period_uncertainty
+candidate_b,eclipsing_binary,1.87,0.934523,50.02550802139037,0.18,0.104935,41.702777777777776,0.08,0.05,37.5,0.885555,0.00211386
+candidate_a,exoplanet_transit,3.42,3.419428,0.016725146198830906,0.013,0.01264,2.7692307692307634,0.16,0.112,30.0,0.844575,0.08136075

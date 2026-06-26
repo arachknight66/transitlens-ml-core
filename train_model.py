@@ -50,7 +50,7 @@ EVAL_DIR = REPO_ROOT / "eval" / "results"
 MODELS_DIR.mkdir(parents=True, exist_ok=True)
 EVAL_DIR.mkdir(parents=True, exist_ok=True)
 
-CLASSES = ["exoplanet_like", "eclipsing_binary_like", "noise_or_other"]
+CLASSES = ["exoplanet_transit", "eclipsing_binary", "blend_contamination", "stellar_variability_or_other"]
 
 # ---------------------------------------------------------------------------
 # 1. Dataset Loading and Stochastic Label Assignment
@@ -61,20 +61,23 @@ def compute_kepler_probabilities(row) -> list[float]:
     disp = str(row.get("koi_disposition", "")).strip().upper()
     ss = row.get("koi_fpflag_ss", 0)
     ec = row.get("koi_fpflag_ec", 0)
+    co = row.get("koi_fpflag_co", 0)
     nt = row.get("koi_fpflag_nt", 0)
     
     if disp == "CONFIRMED":
-        return [1.0, 0.0, 0.0]
+        return [1.0, 0.0, 0.0, 0.0]
     elif disp == "CANDIDATE":
-        return [0.85, 0.05, 0.10]
+        return [0.85, 0.02, 0.03, 0.10]
     elif disp == "FALSE POSITIVE":
         if ss == 1 or ec == 1:
-            return [0.0, 0.95, 0.05]
+            return [0.0, 0.95, 0.0, 0.05]
+        elif co == 1:
+            return [0.0, 0.0, 0.95, 0.05]
         elif nt == 1:
-            return [0.0, 0.05, 0.95]
+            return [0.0, 0.0, 0.05, 0.95]
         else:
-            return [0.0, 0.15, 0.85]
-    return [0.0, 0.0, 1.0]
+            return [0.0, 0.10, 0.15, 0.75]
+    return [0.0, 0.0, 0.0, 1.0]
 
 def compute_tess_probabilities(row) -> list[float]:
     """Assign class probabilities stochastically for TESS targets."""
@@ -82,19 +85,23 @@ def compute_tess_probabilities(row) -> list[float]:
     depth_ppm = float(row.get("pl_trandep", 0.0)) if pd.notnull(row.get("pl_trandep")) else 0.0
     
     if disp in ("CP", "KP"):
-        return [1.0, 0.0, 0.0]
+        return [1.0, 0.0, 0.0, 0.0]
     elif disp == "PC":
-        return [0.80, 0.05, 0.15]
+        return [0.80, 0.02, 0.03, 0.15]
     elif disp == "APC":
-        return [0.40, 0.10, 0.50]
+        return [0.40, 0.05, 0.05, 0.50]
     elif disp == "FA":
-        return [0.0, 0.05, 0.95]
+        return [0.0, 0.0, 0.05, 0.95]
+    elif disp in ("EB", "OEB", "V"):
+        return [0.0, 0.95, 0.0, 0.05]
+    elif disp in ("NEB", "BEB", "BC"):
+        return [0.0, 0.0, 0.95, 0.05]
     elif disp == "FP":
         if depth_ppm > 30000.0:  # >3% fractional depth
-            return [0.0, 0.85, 0.15]
+            return [0.0, 0.85, 0.0, 0.15]
         else:
-            return [0.0, 0.20, 0.80]
-    return [0.0, 0.0, 1.0]
+            return [0.0, 0.05, 0.75, 0.20]
+    return [0.0, 0.0, 0.0, 1.0]
 
 def sample_label(probs: list[float], rng) -> str:
     """Sample class label stochastically from probability vector."""
@@ -221,10 +228,10 @@ def generate_pseudo_lightcurve(row, rng) -> tuple[np.ndarray, np.ndarray]:
     
     # Baseline flux + noise
     lbl = row["label"]
-    noise_level = 0.001 if lbl != "noise_or_other" else 0.005
+    noise_level = 0.001 if lbl != "stellar_variability_or_other" else 0.005
     flux = 1.0 + rng.normal(0, noise_level, len(t))
     
-    if lbl in ("exoplanet_like", "eclipsing_binary_like"):
+    if lbl in ("exoplanet_transit", "eclipsing_binary", "blend_contamination"):
         period = max(0.5, row["period_days"])
         duration = max(0.01, row["duration_days"])
         depth = max(0.0001, row["depth_frac"])
@@ -235,7 +242,7 @@ def generate_pseudo_lightcurve(row, rng) -> tuple[np.ndarray, np.ndarray]:
         
         in_transit = (phase < duration / period) | (phase > 1.0 - duration / period)
         
-        if lbl == "eclipsing_binary_like":
+        if lbl == "eclipsing_binary":
             # EB V-shape and secondary eclipse
             half_phase = duration / period / 2.0
             phase_centered = ((t - t0) / period) % 1.0
@@ -247,14 +254,14 @@ def generate_pseudo_lightcurve(row, rng) -> tuple[np.ndarray, np.ndarray]:
                 elif abs(ph - 0.5) < half_phase:
                     flux[i] -= (depth * 0.4) * (1.0 - abs(ph - 0.5) / half_phase)
         else:
-            # Exoplanet flat-bottomed transit
+            # Exoplanet or blend flat-bottomed transit
             flux[in_transit] -= depth
             
     return t, flux
 
 def extract_features_for_sample(df: pd.DataFrame, samples_per_class: int, rng) -> pd.DataFrame:
-    """Samples targets from joint catalog and extracts their 11-feature vectors."""
-    logger.info("--- Extracting 11-Feature Dataset for Production Model ---")
+    """Samples targets from joint catalog and extracts their 16-feature vectors."""
+    logger.info("--- Extracting 16-Feature Dataset for Production Model ---")
     
     extracted_rows = []
     
@@ -275,8 +282,8 @@ def extract_features_for_sample(df: pd.DataFrame, samples_per_class: int, rng) -
                 # Run BLS
                 bls_res = detect(clean_t, clean_f)
                 
-                # Extract features
-                feat_res = extract(clean_t, clean_f, bls_res)
+                # Extract features (pass metadata to get blend features correctly)
+                feat_res = extract(clean_t, clean_f, bls_res, metadata={"target_id": row["target_id"], "label": lbl})
                 
                 # Add metadata
                 feat_dict = feat_res.features.copy()

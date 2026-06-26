@@ -27,28 +27,36 @@ classification:
   # Primary depth discriminator.
   # Physical basis: no transiting planet can block more than ~3% of a
   # Sun-like star's light. Any deeper signal is stellar in origin.
-  # depth > this value → eclipsing_binary_like immediately.
+  # depth > this value → eclipsing_binary immediately.
   depth_threshold_eb: 0.050
 
   # Odd/even transit depth asymmetry threshold.
   # Physical basis: an eclipsing binary produces alternating primary and
   # secondary eclipses with different depths (different stellar temperatures).
   # A planet produces identical transits every orbit.
-  # |depth_odd - depth_even| > this value → eclipsing_binary_like.
+  # |depth_odd - depth_even| > this value → eclipsing_binary.
   odd_even_threshold: 0.020
 
   # V-shape score threshold.
   # Physical basis: planetary transits are flat-bottomed (planet disc crossing
   # a stellar disc). Eclipsing binaries often show V-shaped profiles from
   # grazing eclipses or limb-darkening effects.
-  # v_shape_score > this value → eclipsing_binary_like.
+  # v_shape_score > this value → eclipsing_binary.
   v_shape_threshold: 0.40
 
   # Depth-to-noise ratio threshold.
   # Below this value the transit signal cannot be confidently distinguished
   # from noise, even if BLS and SNR passed the detection gate.
-  # depth_to_noise_ratio < this value → noise_or_other.
+  # depth_to_noise_ratio < this value → stellar_variability_or_other.
   depth_snr_threshold: 6.0
+
+  # Stellar crowding metric threshold.
+  # Ratio of target flux to total flux in aperture. Below 0.8 implies high blend contamination.
+  crowding_threshold: 0.80
+
+  # Mid-transit centroid shift threshold (in pixels).
+  # Shift above 0.015 suggests nearby background eclipsing binary.
+  centroid_shift_threshold: 0.015
 
 # ── Confidence score component weights ──────────────────────────────────────
 # Each predicted class has a set of components. Each component contributes
@@ -57,7 +65,7 @@ classification:
 # receive a fractional score proportional to proximity to the threshold.
 confidence:
 
-  exoplanet_like:
+  exoplanet_transit:
     components:
       # Strength of the periodic BLS signal
       - name: bls_power
@@ -94,7 +102,7 @@ confidence:
         direction: above
         full_score_threshold: 5.0
 
-  eclipsing_binary_like:
+  eclipsing_binary:
     components:
       # Depth clearly in the stellar range (primary discriminator).
       # BLS scipy fallback under-estimates true depth (measures mean in-transit
@@ -134,7 +142,30 @@ confidence:
         direction: above
         full_score_threshold: 0.040
 
-  noise_or_other:
+  blend_contamination:
+    components:
+      # Crowding metric (low value -> high blending)
+      - name: crowding
+        weight: 0.40
+        feature: crowding_metric
+        direction: below
+        full_score_threshold: 0.70
+
+      # Centroid shift during transit (high value -> off-target source)
+      - name: centroid_shift
+        weight: 0.40
+        feature: centroid_shift
+        direction: above
+        full_score_threshold: 0.020
+
+      # Number of Gaia neighbor stars in aperture
+      - name: neighbor_stars
+        weight: 0.20
+        feature: gaia_neighbor_count
+        direction: above
+        full_score_threshold: 2.0
+
+  stellar_variability_or_other:
     components:
       # Signal-to-noise below detection threshold.
       # Note: bls_power is normalised to [0,1] within each light curve's
