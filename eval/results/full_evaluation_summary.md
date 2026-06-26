@@ -1,11 +1,11 @@
 # TransitLens Scientific Performance Evaluation Summary
 
 ## 1. Executive Summary
-- **Overall Period Recovery Rate**: 50.00% (tolerance < 1.0%)
-- **Validation Split Classification Accuracy**: 100.00%
+- **Overall Period Recovery Rate**: 33.33% (tolerance < 1.0%)
+- **Validation Split Classification Accuracy**: 50.00%
 - **Blind Test Split Classification Accuracy**: 100.00%
 - **Gold Target Set Accuracy**: 100.00%
-- **Average Pipeline Execution Latency**: 4372.2 ms per target
+- **Average Pipeline Execution Latency**: 8839.1 ms per target
 
 ## 2. Classification Performance (Test Split)
 | Class Label | Precision | Recall | F1-Score |

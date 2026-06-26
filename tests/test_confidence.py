@@ -76,7 +76,7 @@ class TestScore:
             "local_noise": 0.001, "depth_to_noise_ratio": 13.0,
             "phase_shape_kurtosis": -0.5,
         }
-        conf = score(features, "exoplanet_like")
+        conf = score(features, "exoplanet_transit")
         assert 0.0 <= conf <= 1.0
         assert conf > 0.70
 
@@ -88,7 +88,7 @@ class TestScore:
             "local_noise": 0.001, "depth_to_noise_ratio": 180.0,
             "phase_shape_kurtosis": 1.5,
         }
-        conf = score(features, "eclipsing_binary_like")
+        conf = score(features, "eclipsing_binary")
         assert 0.0 <= conf <= 1.0
         assert conf > 0.70
 
@@ -100,7 +100,7 @@ class TestScore:
             "local_noise": 0.001, "depth_to_noise_ratio": 1.0,
             "phase_shape_kurtosis": 0.0,
         }
-        conf = score(features, "noise_or_other")
+        conf = score(features, "stellar_variability_or_other")
         assert 0.0 <= conf <= 1.0
         assert conf > 0.70
 
@@ -110,7 +110,7 @@ class TestScore:
             "transit_count", "odd_even_depth_delta", "v_shape_score",
             "local_noise", "depth_to_noise_ratio", "phase_shape_kurtosis",
         ]}
-        for cls in ["exoplanet_like", "eclipsing_binary_like", "noise_or_other"]:
+        for cls in ["exoplanet_transit", "eclipsing_binary", "blend_contamination", "stellar_variability_or_other"]:
             conf = score(features, cls)
             assert 0.0 <= conf <= 1.0
 
@@ -135,7 +135,7 @@ class TestScoreWithBreakdown:
             "local_noise": 0.001, "depth_to_noise_ratio": 13.0,
             "phase_shape_kurtosis": -0.5,
         }
-        result = score_with_breakdown(features, "exoplanet_like")
+        result = score_with_breakdown(features, "exoplanet_transit")
         assert isinstance(result, tuple)
         assert len(result) == 2
 
@@ -147,7 +147,7 @@ class TestScoreWithBreakdown:
             "local_noise": 0.001, "depth_to_noise_ratio": 13.0,
             "phase_shape_kurtosis": -0.5,
         }
-        conf, breakdown = score_with_breakdown(features, "exoplanet_like")
+        conf, breakdown = score_with_breakdown(features, "exoplanet_transit")
         assert len(breakdown) > 0
         for comp in breakdown:
             assert "name" in comp
@@ -163,6 +163,6 @@ class TestScoreWithBreakdown:
             "local_noise": 0.001, "depth_to_noise_ratio": 13.0,
             "phase_shape_kurtosis": -0.5,
         }
-        conf_breakdown, _ = score_with_breakdown(features, "exoplanet_like")
-        conf_simple = score(features, "exoplanet_like")
+        conf_breakdown, _ = score_with_breakdown(features, "exoplanet_transit")
+        conf_simple = score(features, "exoplanet_transit")
         assert abs(conf_breakdown - conf_simple) < 0.001

@@ -96,20 +96,20 @@ def synthetic_cases():
             "time": time.copy(), "flux": flux_a,
             "metadata": {
                 "target_id": "candidate_a", "true_period": period_a,
-                "true_depth": depth_a, "true_label": "exoplanet_like",
+                "true_depth": depth_a, "true_label": "exoplanet_transit",
             },
         },
         "b": {
             "time": time.copy(), "flux": flux_b,
             "metadata": {
                 "target_id": "candidate_b", "true_period": period_b,
-                "true_depth": depth_b, "true_label": "eclipsing_binary_like",
+                "true_depth": depth_b, "true_label": "eclipsing_binary",
             },
         },
         "c": {
             "time": time.copy(), "flux": flux_c,
             "metadata": {
-                "target_id": "candidate_c", "true_label": "noise_or_other",
+                "target_id": "candidate_c", "true_label": "stellar_variability_or_other",
             },
         },
     }

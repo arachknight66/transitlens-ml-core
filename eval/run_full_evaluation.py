@@ -82,6 +82,91 @@ def load_csv_targets(csv_path: Path) -> dict:
         }
     return targets
 
+def load_npz_targets(manifest_path: Path) -> dict:
+    """Loads target light curves and metadata using a processed split manifest CSV and its NPZ files."""
+    if not manifest_path.exists():
+        logger.warning(f"Manifest not found: {manifest_path}")
+        return {}
+    
+    df = pd.read_csv(manifest_path)
+    parent_dir = manifest_path.parent
+    
+    # Check for central manifest
+    central_manifest_path = parent_dir / "manifest.csv"
+    if not central_manifest_path.exists() and parent_dir.name == "splits":
+        central_manifest_path = parent_dir.parent / "manifest.csv"
+        
+    central_df = None
+    if central_manifest_path.exists():
+        try:
+            central_df = pd.read_csv(central_manifest_path)
+        except Exception as e:
+            logger.warning(f"Could not load central manifest: {e}")
+            
+    targets = {}
+    for _, row in df.iterrows():
+        target_id = row["target_id"]
+        class_label = row["class_label"]
+        lc_path_rel = row["lightcurve_path"]
+        
+        # Locate NPZ
+        lc_path = parent_dir / lc_path_rel
+        if not lc_path.exists():
+            lc_path = parent_dir.parent / lc_path_rel
+            
+        if not lc_path.exists():
+            logger.error(f"NPZ file not found for target {target_id} at {lc_path}")
+            continue
+            
+        try:
+            npz_data = np.load(lc_path)
+            time_arr = npz_data["time"]
+            flux_arr = npz_data["flux"]
+        except Exception as e:
+            logger.error(f"Failed to load NPZ data for {target_id}: {e}")
+            continue
+            
+        # Standardize labels
+        label = ALIASES.get(class_label, class_label)
+        
+        # Default metadata fields
+        sector = None
+        cadence_min = 2.0
+        true_epoch = None
+        
+        if central_df is not None:
+            c_row = central_df[central_df["target_id"] == target_id]
+            if not c_row.empty:
+                sector_val = c_row.iloc[0].get("sector")
+                if pd.notna(sector_val):
+                    sector = int(sector_val)
+                cadence_val = c_row.iloc[0].get("cadence_min_median")
+                if pd.notna(cadence_val):
+                    cadence_min = float(cadence_val)
+                epoch_val = c_row.iloc[0].get("true_epoch_btjd")
+                if pd.notna(epoch_val):
+                    true_epoch = float(epoch_val)
+                    
+        metadata = {
+            "target_id": str(target_id),
+            "label": label,
+            "true_period": float(row["true_period_days"]) if pd.notna(row.get("true_period_days")) else None,
+            "true_depth": float(row["true_depth"]) if pd.notna(row.get("true_depth")) else None,
+            "true_duration": float(row["true_duration_days"]) if pd.notna(row.get("true_duration_days")) else None,
+            "true_epoch": true_epoch,
+            "cadence_min": cadence_min,
+            "sector": sector,
+        }
+        
+        targets[target_id] = {
+            "time": time_arr,
+            "flux": flux_arr,
+            "metadata": metadata,
+            "true_label": label
+        }
+    return targets
+
+
 def evaluate_dataset(name: str, targets: dict) -> tuple[list[dict], dict]:
     """Runs pipeline analysis over a dictionary of targets and returns results and metrics."""
     logger.info(f"Running evaluation on {name} ({len(targets)} targets)...")
@@ -272,13 +357,23 @@ def main():
     test_csv = splits_dir / "test.csv"
     gold_csv = _DP_PATH / "datasets" / "gold_set.csv"
     
+    processed_dir = _DP_PATH / "datasets" / "processed" / "lightcurves"
+    val_manifest = processed_dir / "splits" / "val_manifest.csv"
+    test_manifest = processed_dir / "splits" / "test_manifest.csv"
+    
     # 1. Run Injection Recovery suite
     logger.info("Running injection-recovery suite...")
     run_injection_suite(n_trials=30)
     
     # 2. Load Split Datasets
-    val_targets = load_csv_targets(val_csv)
-    test_targets = load_csv_targets(test_csv)
+    if val_manifest.exists() and test_manifest.exists():
+        logger.info("Processed NPZ manifests found. Running evaluation on Phase 1 NPZ dataset splits...")
+        val_targets = load_npz_targets(val_manifest)
+        test_targets = load_npz_targets(test_manifest)
+    else:
+        logger.info("Processed manifests not found. Falling back to old CSV targets...")
+        val_targets = load_csv_targets(val_csv)
+        test_targets = load_csv_targets(test_csv)
     
     # Run evaluation
     val_results, val_metrics = evaluate_dataset("Validation Split", val_targets)

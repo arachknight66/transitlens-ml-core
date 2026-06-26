@@ -38,8 +38,8 @@ curl http://localhost:8000/demo/a
 `transitlens-ml-core` is the **brain** of the TransitLens system. It receives a raw light curve and returns a complete analysis result including:
 
 - **Transit detection** via Box Least Squares (BLS) period search
-- **11 interpretable features** extracted from the detected signal
-- **Classification** into `exoplanet_like`, `eclipsing_binary_like`, or `noise_or_other`
+- **16 physically-interpretable features** extracted from the detected signal
+- **Classification** into `exoplanet_transit`, `eclipsing_binary`, `blend_contamination`, or `stellar_variability_or_other`
 - **Calibrated confidence score** with per-component breakdown
 - **4 diagnostic plots** as base64-encoded PNG strings
 - **Human-readable explanation** of the classification decision

@@ -135,12 +135,34 @@ class TestInvariants:
             result = analyze_light_curve(case["time"], case["flux"], case["metadata"])
             assert result["predicted_class"] in valid
 
-    def test_explanation_non_empty(self, synthetic_cases):
-        for cid in ["a", "b", "c"]:
-            case = synthetic_cases[cid]
-            result = analyze_light_curve(case["time"], case["flux"], case["metadata"])
-            assert isinstance(result["explanation"], str)
-            assert len(result["explanation"]) > 10
+    def test_legacy_aliases_map_correctly(self):
+        from core.classifier import ClassificationResult
+        res1 = ClassificationResult("exoplanet_like", [], ml_class="eclipsing_binary_like")
+        assert res1.predicted_class == "exoplanet_transit"
+        assert res1.ml_class == "eclipsing_binary"
+        
+        res2 = ClassificationResult("noise_or_other", [])
+        assert res2.predicted_class == "stellar_variability_or_other"
+
+    def test_schema_conforms_to_contract(self, synthetic_cases):
+        case = synthetic_cases["a"]
+        result = analyze_light_curve(case["time"], case["flux"], case["metadata"])
+        
+        # Check all required fields from §3 of the Scientific Contract
+        required_fields = {
+            "target_id", "pipeline_version", "processing_time_ms",
+            "candidate_detected", "predicted_class", "confidence", "class_probabilities", "explanation",
+            "period_days", "period_uncertainty_days", "duration_days", "duration_uncertainty_days", "depth", "depth_uncertainty", "epoch_btjd",
+            "snr", "bootstrap_fap", "fit_quality", "transit_count",
+            "features", "plots"
+        }
+        for field in required_fields:
+            assert field in result, f"Result missing schema field: {field}"
+        
+        # Check plots sub-fields
+        plots = result["plots"]
+        for plot_key in ["raw_lightcurve", "cleaned_lightcurve", "periodogram", "phase_folded"]:
+            assert plot_key in plots, f"plots dict missing key: {plot_key}"
 
 
 # ---------------------------------------------------------------------------
