@@ -1,9 +1,9 @@
 {
-  "timestamp": "2026-06-26T07:13:19.830092+00:00",
-  "n_samples": 200,
-  "rf_accuracy": 0.64,
-  "xgb_accuracy": 0.62,
-  "features": [
+  "training_date": "2026-06-26 23:55:37",
+  "evidence_level": "sufficient",
+  "sufficiency_reasons": "All classes satisfy target sizes.",
+  "model_type": "RandomForest",
+  "features_used": [
     "bls_power",
     "snr",
     "period_days",
@@ -21,10 +21,15 @@
     "crowding_metric",
     "gaia_neighbor_count"
   ],
-  "label_mapping": {
-    "0": "blend_contamination",
-    "1": "eclipsing_binary",
-    "2": "exoplanet_transit",
-    "3": "stellar_variability_or_other"
+  "dataset_sizes": {
+    "train": 604,
+    "val": 202,
+    "test": 201
+  },
+  "metrics": {
+    "test_accuracy": 1.0,
+    "test_macro_f1": 1.0,
+    "ece": 0.019477719150455486,
+    "brier_score": 0.0005186859509861273
   }
 }

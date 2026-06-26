@@ -39,6 +39,64 @@ logger = logging.getLogger(__name__)
 # Canonical allowed class labels
 CLASSES = ("exoplanet_transit", "eclipsing_binary", "blend_contamination", "stellar_variability_or_other")
 
+class TransitLensClassifier:
+    """Wrapper class for the final calibrated ML classifier."""
+    def __init__(self, model, scaler, classes, is_xgboost=False):
+        self.model = model
+        self.scaler = scaler
+        self.classes = list(classes)
+        self.is_xgboost = is_xgboost
+        
+    def predict(self, feature_array: np.ndarray, calibrated: bool = True) -> str:
+        scaled = self.scaler.transform(feature_array)
+        estimator = self.model
+        if not calibrated:
+            if hasattr(self.model, "estimator"):
+                base_est = self.model.estimator
+                if hasattr(base_est, "estimator"):
+                    estimator = base_est.estimator
+                else:
+                    estimator = base_est
+        
+        if self.is_xgboost:
+            pred_idx = int(estimator.predict(scaled)[0])
+            try:
+                return self.classes[pred_idx]
+            except (ValueError, IndexError):
+                return str(pred_idx)
+        else:
+            pred = estimator.predict(scaled)[0]
+            return str(pred)
+            
+    def predict_proba(self, feature_array: np.ndarray, calibrated: bool = True) -> dict[str, float]:
+        scaled = self.scaler.transform(feature_array)
+        estimator = self.model
+        if not calibrated:
+            if hasattr(self.model, "estimator"):
+                base_est = self.model.estimator
+                if hasattr(base_est, "estimator"):
+                    estimator = base_est.estimator
+                else:
+                    estimator = base_est
+                    
+        probs = estimator.predict_proba(scaled)[0]
+        if self.is_xgboost:
+            return {self.classes[i]: float(probs[i]) for i in range(len(self.classes))}
+        else:
+            model_classes = list(estimator.classes_)
+            prob_dict = {}
+            for cls_val, prob in zip(model_classes, probs):
+                if isinstance(cls_val, (int, np.integer)):
+                    cls_name = self.classes[cls_val]
+                else:
+                    cls_name = str(cls_val)
+                prob_dict[cls_name] = float(prob)
+                
+            for cls in self.classes:
+                if cls not in prob_dict:
+                    prob_dict[cls] = 0.0
+            return prob_dict
+
 # Default path to rule config — resolved relative to this file's location
 _DEFAULT_RULE_CONFIG_PATH = Path(__file__).parent.parent / "models" / "rule_config.yaml"
 
@@ -183,12 +241,16 @@ def classify(
     ml_cfg = rule_cfg.get("ml_classifier", {})
     ml_enabled = ml_cfg.get("enabled", True)
     dev_fallback = ml_cfg.get("dev_fallback", False)
+    ml_calibrated = ml_cfg.get("calibrated", True)
+    use_rule_fallback_on_disagreement = ml_cfg.get("use_rule_fallback_on_disagreement", False)
     
     # Check runtime overrides for ml_classifier
     if config and "ml_classifier" in config:
         ml_override = config["ml_classifier"]
         ml_enabled = ml_override.get("enabled", ml_enabled)
         dev_fallback = ml_override.get("dev_fallback", dev_fallback)
+        ml_calibrated = ml_override.get("calibrated", ml_calibrated)
+        use_rule_fallback_on_disagreement = ml_override.get("use_rule_fallback_on_disagreement", use_rule_fallback_on_disagreement)
 
     # Run rule-based classification for diagnostics/explanation
     rule_result = _apply_rules(features, clf_thresholds, det_thresholds)
@@ -212,7 +274,7 @@ def classify(
 
     if ml_enabled:
         try:
-            ml_class, class_probabilities = _run_ml_classifier(features, rule_cfg, rule_config_path)
+            ml_class, class_probabilities = _run_ml_classifier(features, rule_cfg, rule_config_path, ml_calibrated)
             ml_agreement = (ml_class == rule_result.predicted_class)
         except Exception as exc:
             if dev_fallback:
@@ -239,6 +301,17 @@ def classify(
             )
 
     predicted_class = ml_class if ml_class is not None else rule_result.predicted_class
+    
+    if ml_enabled and ml_class is not None and not ml_agreement:
+        logger.info(
+            "classifier: ML class '%s' and rule class '%s' disagree.",
+            ml_class, rule_result.predicted_class
+        )
+        if use_rule_fallback_on_disagreement:
+            logger.info("classifier: falling back to rule-based class '%s' due to disagreement fallback config.", rule_result.predicted_class)
+            predicted_class = rule_result.predicted_class
+
+
 
     if class_probabilities is None:
         # Build simulated probabilities from rule confidence
@@ -435,68 +508,84 @@ def _run_ml_classifier(
     features: dict[str, float],
     rule_cfg: dict,
     rule_config_path: str | None,
-) -> str:
+    calibrated: bool = True,
+) -> tuple[str, dict[str, float]]:
     """
-    Run the ML classifier (RF or XGBoost) on the feature vector.
-
-    Returns the predicted class string. Raises an exception if the model
-    files are absent or prediction fails.
+    Run the ML classifier on the feature vector.
+    Loads final_classifier.pkl (which contains the TransitLensClassifier wrapper)
+    or falls back to old individual pickle files if it doesn't exist.
     """
     from core.feature_extractor import FEATURE_NAMES
 
     ml_cfg = rule_cfg.get("ml_classifier", {})
     model_type = ml_cfg.get("model_type", "rf")
+    model_path_str = ml_cfg.get("model_path")
 
-    # Locate model files relative to rule_config
+    # Locate models directory
     if rule_config_path:
         models_dir = Path(rule_config_path).parent
     else:
         models_dir = _DEFAULT_RULE_CONFIG_PATH.parent
 
-    # Validate feature order against FEATURE_NAMES
+    # Validate feature order against FEATURE_NAMES if feature_order.json exists
     feature_order_file = models_dir / "feature_order.json"
-    if not feature_order_file.exists():
-        raise FileNotFoundError(
-            f"feature_order.json not found in {models_dir}. "
-            "Ensure the model has been trained."
-        )
-    with open(feature_order_file, "r") as f:
-        saved_features = json.load(f)
-    if list(saved_features) != list(FEATURE_NAMES):
-        raise ClassificationError(
-            f"Feature schema mismatch. Models trained with: {saved_features}, "
-            f"but code expects: {list(FEATURE_NAMES)}"
-        )
+    if feature_order_file.exists():
+        with open(feature_order_file, "r") as f:
+            saved_features = json.load(f)
+        if list(saved_features) != list(FEATURE_NAMES):
+            raise ClassificationError(
+                f"Feature schema mismatch. Models trained with: {saved_features}, "
+                f"but code expects: {list(FEATURE_NAMES)}"
+            )
 
-    model_file    = models_dir / f"{'rf' if model_type == 'rf' else 'xgb'}_model.pkl"
-    scaler_file   = models_dir / "feature_scaler.pkl"
+    # Determine model file to load
+    if model_path_str:
+        model_file = Path(model_path_str)
 
-    if not model_file.exists():
-        raise FileNotFoundError(f"ML model not found: {model_file}")
-    if not scaler_file.exists():
-        raise FileNotFoundError(f"Feature scaler not found: {scaler_file}")
+        if not model_file.is_absolute():
+            model_file = models_dir / model_file
+    else:
+        model_file = models_dir / "final_classifier.pkl"
 
-    import pickle
-    with open(model_file, "rb") as f:
-        model = pickle.load(f)
-    with open(scaler_file, "rb") as f:
-        scaler = pickle.load(f)
-
-    # Build feature array in canonical order
-    feature_vec = np.array([features.get(k, 0.0) for k in FEATURE_NAMES]).reshape(1, -1)
-    scaled = scaler.transform(feature_vec)
-
-    probas = model.predict_proba(scaled)[0]
-    model_classes = list(model.classes_)
-    class_probabilities = {str(cls): float(prob) for cls, prob in zip(model_classes, probas)}
-    # Fill in any missing classes from CLASSES
-    for cls in CLASSES:
-        if cls not in class_probabilities:
-            class_probabilities[cls] = 0.0
+    # If final_classifier.pkl doesn't exist, we fall back to loading separate rf/xgb files
+    if not model_file.exists() and not model_path_str:
+        old_model_file = models_dir / f"{'rf' if model_type == 'rf' else 'xgb'}_model.pkl"
+        scaler_file   = models_dir / "feature_scaler.pkl"
+        
+        if not old_model_file.exists() or not scaler_file.exists():
+            raise FileNotFoundError(f"Neither final_classifier.pkl nor old model files found in {models_dir}")
             
-    class_idx = int(np.argmax(probas))
-    if class_idx < len(model_classes):
+        import pickle
+        with open(old_model_file, "rb") as f:
+            model = pickle.load(f)
+        with open(scaler_file, "rb") as f:
+            scaler = pickle.load(f)
+            
+        # Build feature array in canonical order
+        feature_vec = np.array([features.get(k, 0.0) for k in FEATURE_NAMES]).reshape(1, -1)
+        scaled = scaler.transform(feature_vec)
+        
+        probas = model.predict_proba(scaled)[0]
+        model_classes = list(model.classes_)
+        class_probabilities = {str(cls): float(prob) for cls, prob in zip(model_classes, probas)}
+        # Fill in any missing classes from CLASSES
+        for cls in CLASSES:
+            if cls not in class_probabilities:
+                class_probabilities[cls] = 0.0
+                
+        class_idx = int(np.argmax(probas))
         predicted_class = str(model_classes[class_idx])
         return predicted_class, class_probabilities
 
-    raise ClassificationError(f"ML model returned unexpected class index {class_idx}")
+    # Load final_classifier.pkl
+    import pickle
+    with open(model_file, "rb") as f:
+        wrapper = pickle.load(f)
+        
+    feature_vec = np.array([features.get(k, 0.0) for k in FEATURE_NAMES]).reshape(1, -1)
+    
+    # Use wrapper methods
+    predicted_class = wrapper.predict(feature_vec, calibrated=calibrated)
+    class_probabilities = wrapper.predict_proba(feature_vec, calibrated=calibrated)
+    
+    return predicted_class, class_probabilities

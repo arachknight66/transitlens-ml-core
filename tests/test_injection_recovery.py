@@ -646,7 +646,7 @@ def test_quick_mode_writes_expected_files(tmp_path):
     assert "period_recovery_rate_1pct" in summary
 
     # Report should contain key sections
-    report_text = (tmp_path / "phase4_injection_recovery_report.md").read_text()
+    report_text = (tmp_path / "phase4_injection_recovery_report.md").read_text(encoding="utf-8")
     for section in [
         "Run Configuration", "Overall Results", "SNR Bin", "False-Positive",
         "Alias Behavior", "Weak Regimes", "Strict Conclusion", "Caveats"

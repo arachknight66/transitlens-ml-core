@@ -186,10 +186,16 @@ def evaluate_dataset(name: str, targets: dict) -> tuple[list[dict], dict]:
     
     start_time = _time.perf_counter()
     for tid, target in targets.items():
+        meta_clean = dict(target["metadata"])
+        if "label" in meta_clean:
+            del meta_clean["label"]
+        if "class_label" in meta_clean:
+            del meta_clean["class_label"]
+            
         res = analyze_light_curve(
             time=target["time"],
             flux=target["flux"],
-            metadata=target["metadata"]
+            metadata=meta_clean
         )
         
         true_label = target["true_label"]

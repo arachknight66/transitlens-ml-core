@@ -189,6 +189,7 @@ ml_classifier:
   # Set to true only when trained .pkl model files exist in models/
   enabled: false
   dev_fallback: true
+  use_rule_fallback_on_disagreement: true
 
   # Which model to use: "rf" (Random Forest) or "xgb" (XGBoost)
   model_type: "rf"

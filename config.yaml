@@ -109,6 +109,7 @@ ml_classifier:
   model_type: "rf"
   dev_fallback: false
   blend_weight: 0.0
+  use_rule_fallback_on_disagreement: true
 
 # ── Plotting ─────────────────────────────────────────────────────────────────
 plotting:

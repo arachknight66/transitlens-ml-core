@@ -89,7 +89,7 @@ def synthetic_cases():
             flux_b[i] -= 0.08 * (1.0 - abs(ph - 0.5) / hp_b)
 
     # Candidate C — noise
-    flux_c = 1.0 + rng.normal(0, noise, n)
+    flux_c = 1.0 + np.random.default_rng(3).normal(0, noise, n)
 
     return {
         "a": {

@@ -181,6 +181,12 @@ def extract(
     # ── Feature 2: snr ───────────────────────────────────────────────────
     features["snr"] = float(max(0.0, bls_result.snr))
 
+    # ── Resolve aliases (double-period/half-period check) ─────────────────
+    from core.alias_resolver import resolve_aliases
+    alias_res = resolve_aliases(time, flux, period, t0, duration, depth)
+    period = alias_res["resolved_period"]
+    t0 = alias_res["resolved_t0"]
+
     # ── Feature 3: period_days ───────────────────────────────────────────
     features["period_days"] = float(max(0.0, period))
 
@@ -276,8 +282,6 @@ def extract(
         features["bls_sde"] = 0.0
 
     # ── Feature 13: secondary_eclipse_depth ──────────────────────────────
-    from core.alias_resolver import resolve_aliases
-    alias_res = resolve_aliases(time, flux, period, t0, duration, depth)
     features["secondary_eclipse_depth"] = alias_res["secondary_eclipse_depth"]
 
     # Update odd_even_depth_delta if alias resolver has a better one

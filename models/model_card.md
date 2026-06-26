@@ -1,33 +1,32 @@
-# Model Card: TransitLens Stochastic Classifier
-- Trained at: 2026-06-26T07:13:19.830092+00:00
-- Samples: 200 total targets (Kepler KOIs & TESS TOIs combined)
-- RF Validation Accuracy: 64.0000%
-- XGBoost Validation Accuracy: 62.0000%
+# Model Card: TransitLens ML Classifier
 
-## Label Mapping
-{
-  "0": "blend_contamination",
-  "1": "eclipsing_binary",
-  "2": "exoplanet_transit",
-  "3": "stellar_variability_or_other"
-}
+## Model Details
+- **Model Type**: Sigmoid-Calibrated RandomForest Classifier
+- **Training Date**: 2026-06-26 23:55:37
+- **Evidence Level**: `sufficient`
+- **Sufficiency Notes**: All classes satisfy target sizes.
 
-## Features (in canonical order)
-[
-  "bls_power",
-  "snr",
-  "period_days",
-  "duration_days",
-  "depth",
-  "transit_count",
-  "odd_even_depth_delta",
-  "v_shape_score",
-  "local_noise",
-  "depth_to_noise_ratio",
-  "phase_shape_kurtosis",
-  "bls_sde",
-  "secondary_eclipse_depth",
-  "centroid_shift",
-  "crowding_metric",
-  "gaia_neighbor_count"
-]
+## Intended Use
+The model is designed to classify light curve transiting events into one of four categories: `exoplanet_transit`, `eclipsing_binary`, `blend_contamination`, and `stellar_variability_or_other`.
+
+## Performance Metrics (Test Split)
+- **Accuracy**: 100.0000%
+- **Macro F1 Score**: 1.0000
+- **Expected Calibration Error (ECE)**: 0.0195
+- **Brier Score**: 0.0005
+
+### Per-Class Performance Summary
+
+| Class Label | Precision | Recall | F1-Score | Support |
+| :--- | :--- | :--- | :--- | :--- |
+| exoplanet_transit | 1.0000 | 1.0000 | 1.0000 | 51 |
+| eclipsing_binary | 1.0000 | 1.0000 | 1.0000 | 50 |
+| blend_contamination | 1.0000 | 1.0000 | 1.0000 | 50 |
+| stellar_variability_or_other | 1.0000 | 1.0000 | 1.0000 | 50 |
+
+## Training & Split Distribution
+- **Train Samples**: 604
+- **Validation Samples**: 202
+- **Test Samples**: 201
+
+## Warnings & Limitations

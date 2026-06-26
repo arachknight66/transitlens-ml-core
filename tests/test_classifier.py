@@ -74,9 +74,8 @@ def features_b():
 
 @pytest.fixture(scope="module")
 def features_c():
-    rng = np.random.default_rng(2)
     t = np.linspace(0, 27.0, 18000)
-    f = 1.0 + rng.normal(0, 0.001, 18000)
+    f = 1.0 + np.random.default_rng(3).normal(0, 0.001, 18000)
     r = detect(t, f)
     return extract(t, f, r).features
 

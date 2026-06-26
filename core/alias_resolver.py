@@ -43,8 +43,9 @@ def resolve_aliases(time, flux, detected_period, detected_t0, detected_duration,
     phase_double = phase_fold(time, double_period, detected_t0)
     
     # Measure average out-of-transit flux level
-    in_transit_primary = (phase_double < (detected_duration / double_period)) | (phase_double > 1.0 - (detected_duration / double_period))
-    in_transit_secondary = (phase_double > 0.5 - (detected_duration / double_period)) & (phase_double < 0.5 + (detected_duration / double_period))
+    half_dur_primary = (detected_duration / double_period) / 2.0
+    in_transit_primary = np.abs(phase_double) < half_dur_primary
+    in_transit_secondary = np.abs(np.abs(phase_double) - 0.5) < half_dur_primary
     out_of_transit = ~(in_transit_primary | in_transit_secondary)
     
     out_flux = flux[out_of_transit]
@@ -77,8 +78,10 @@ def resolve_aliases(time, flux, detected_period, detected_t0, detected_duration,
     # Transit epoch cycles
     cycle = np.round((time - resolved_t0) / resolved_period)
     
-    odd_mask = (cycle % 2 == 1) & ((phase < (detected_duration / resolved_period)) | (phase > 1.0 - (detected_duration / resolved_period)))
-    even_mask = (cycle % 2 == 0) & ((phase < (detected_duration / resolved_period)) | (phase > 1.0 - (detected_duration / resolved_period)))
+    half_dur_resolved = (detected_duration / resolved_period) / 2.0
+    in_transit = np.abs(phase) < half_dur_resolved
+    odd_mask = (cycle % 2 == 1) & in_transit
+    even_mask = (cycle % 2 == 0) & in_transit
     
     odd_flux = flux[odd_mask]
     even_flux = flux[even_mask]
