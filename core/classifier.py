@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import logging
 import os
+import json
 from pathlib import Path
 from typing import Optional
 
@@ -186,37 +187,70 @@ def classify(
     if config and "detection" in config:
         det_thresholds.update(config["detection"])
 
-    # ── Rule-based classification ─────────────────────────────────────────
+    # Load ML classifier config
+    ml_cfg = rule_cfg.get("ml_classifier", {})
+    ml_enabled = ml_cfg.get("enabled", True)
+    dev_fallback = ml_cfg.get("dev_fallback", False)
+    
+    # Check runtime overrides for ml_classifier
+    if config and "ml_classifier" in config:
+        ml_override = config["ml_classifier"]
+        ml_enabled = ml_override.get("enabled", ml_enabled)
+        dev_fallback = ml_override.get("dev_fallback", dev_fallback)
+
+    # Run rule-based classification for diagnostics/explanation
     rule_result = _apply_rules(features, clf_thresholds, det_thresholds)
 
-    # ── Optional ML classification ────────────────────────────────────────
-    ml_cfg = rule_cfg.get("ml_classifier", {})
+    # Stage 1 Detection gate bypass: if it is noise because of Stage 1 fail, bypass ML
+    if rule_result.predicted_class == "noise_or_other" and any("Stage 1 FAIL" in s for s in rule_result.rule_path):
+        logger.info("classifier: candidate failed Stage 1 detection gate — forcing noise_or_other")
+        return rule_result
+
     ml_class = None
     ml_agreement = True
 
-    if ml_cfg.get("enabled", False):
+    if ml_enabled:
         try:
             ml_class = _run_ml_classifier(features, rule_cfg, rule_config_path)
             ml_agreement = (ml_class == rule_result.predicted_class)
-            if not ml_agreement:
-                logger.info(
-                    "classifier: rule-based=%s, ML=%s — disagreement, using rule-based",
-                    rule_result.predicted_class, ml_class,
-                )
         except Exception as exc:
-            logger.warning("ML classifier failed: %s — using rule-based only", exc)
+            if dev_fallback:
+                logger.warning(
+                    "ML classifier failed: %s — falling back to rule-based because dev_fallback=true",
+                    exc
+                )
+                ml_class = None
+                ml_agreement = True
+            else:
+                raise ClassificationError(
+                    f"ML classifier execution failed (and dev_fallback=false): {exc}. "
+                    "Please ensure the ML models are trained by running: python train_model.py"
+                ) from exc
+    else:
+        if dev_fallback:
+            logger.info("ML classifier disabled — using rule-based diagnostic because dev_fallback=true")
             ml_class = None
             ml_agreement = True
+        else:
+            raise ClassificationError(
+                "ML classifier is disabled in configuration, but dev_fallback is false. "
+                "The trained ML model is required for production inference."
+            )
 
-    rule_result.ml_class = ml_class
-    rule_result.ml_agreement = ml_agreement
+    predicted_class = ml_class if ml_class is not None else rule_result.predicted_class
 
     logger.info(
-        "classifier: predicted_class='%s'  ml_class=%s  agreement=%s",
-        rule_result.predicted_class, ml_class, ml_agreement,
+        "classifier: predicted_class='%s' (ml_class=%s, rule_class=%s, agreement=%s)",
+        predicted_class, ml_class, rule_result.predicted_class, ml_agreement,
     )
 
-    return rule_result
+    return ClassificationResult(
+        predicted_class=predicted_class,
+        rule_path=rule_result.rule_path,
+        ml_class=ml_class,
+        ml_agreement=ml_agreement,
+        thresholds=rule_result.thresholds,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -366,10 +400,10 @@ def _run_ml_classifier(
     rule_config_path: str | None,
 ) -> str:
     """
-    Run the optional ML classifier (RF or XGBoost) on the feature vector.
+    Run the ML classifier (RF or XGBoost) on the feature vector.
 
     Returns the predicted class string. Raises an exception if the model
-    files are absent or prediction fails — caller handles gracefully.
+    files are absent or prediction fails.
     """
     from core.feature_extractor import FEATURE_NAMES
 
@@ -381,6 +415,21 @@ def _run_ml_classifier(
         models_dir = Path(rule_config_path).parent
     else:
         models_dir = _DEFAULT_RULE_CONFIG_PATH.parent
+
+    # Validate feature order against FEATURE_NAMES
+    feature_order_file = models_dir / "feature_order.json"
+    if not feature_order_file.exists():
+        raise FileNotFoundError(
+            f"feature_order.json not found in {models_dir}. "
+            "Ensure the model has been trained."
+        )
+    with open(feature_order_file, "r") as f:
+        saved_features = json.load(f)
+    if list(saved_features) != list(FEATURE_NAMES):
+        raise ClassificationError(
+            f"Feature schema mismatch. Models trained with: {saved_features}, "
+            f"but code expects: {list(FEATURE_NAMES)}"
+        )
 
     model_file    = models_dir / f"{'rf' if model_type == 'rf' else 'xgb'}_model.pkl"
     scaler_file   = models_dir / "feature_scaler.pkl"

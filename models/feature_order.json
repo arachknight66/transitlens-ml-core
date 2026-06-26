@@ -1,0 +1,13 @@
+[
+  "bls_power",
+  "snr",
+  "period_days",
+  "duration_days",
+  "depth",
+  "transit_count",
+  "odd_even_depth_delta",
+  "v_shape_score",
+  "local_noise",
+  "depth_to_noise_ratio",
+  "phase_shape_kurtosis"
+]

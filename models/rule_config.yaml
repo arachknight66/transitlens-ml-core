@@ -157,6 +157,7 @@ confidence:
 ml_classifier:
   # Set to true only when trained .pkl model files exist in models/
   enabled: false
+  dev_fallback: true
 
   # Which model to use: "rf" (Random Forest) or "xgb" (XGBoost)
   model_type: "rf"

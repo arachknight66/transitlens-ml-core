@@ -208,7 +208,10 @@ def analyze_light_curve(
 
     # ── Stage 4: Classification ───────────────────────────────────────────
     try:
-        clf_cfg = {"classification": cfg.get("classification", {})}
+        clf_cfg = {
+            "classification": cfg.get("classification", {}),
+            "ml_classifier": cfg.get("ml_classifier", {}),
+        }
         classification_result = classify(features, config=clf_cfg)
         predicted_class = classification_result.predicted_class
     except Exception as exc:

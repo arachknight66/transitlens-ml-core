@@ -105,8 +105,9 @@ classification:
 
 # ── Optional ML Classifier ───────────────────────────────────────────────────
 ml_classifier:
-  enabled: false
+  enabled: true
   model_type: "rf"
+  dev_fallback: false
   blend_weight: 0.0
 
 # ── Plotting ─────────────────────────────────────────────────────────────────
