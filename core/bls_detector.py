@@ -57,7 +57,8 @@ DEFAULT_CONFIG = {
     "duration_min_days": 0.01,      # ~15 minutes
     "duration_max_fraction": 0.5,   # max duration = fraction × period
     "bls_power_threshold": 0.15,    # minimum normalised BLS power for detection
-    "snr_threshold": 7.0,           # minimum SNR for detection
+    "snr_threshold": 7.0,           # minimum multi-point SNR for detection
+    "min_depth_snr": 0.5,           # minimum depth/global_flux_rms guard (FP suppressor)
     "alias_check_tolerance": 0.20,  # power within this fraction of peak → flag alias
 }
 
@@ -205,49 +206,58 @@ def detect(
     best_duration = float(best_params["duration"][peak_idx])
     best_depth = float(best_params["depth"][peak_idx])
 
-    # ── Compute SNR ───────────────────────────────────────────────────────
-    snr = _compute_snr(time, flux, best_period, best_t0, best_duration, best_depth)
+    # -- Compute SNR and local_noise -------------------------------------------
+    snr, local_noise = _compute_snr(time, flux, best_period, best_t0, best_duration, best_depth)
 
-    # ── Alias check ───────────────────────────────────────────────────────
+    # -- Alias check -----------------------------------------------------------
     alias_warning = _check_aliases(periods, power, best_period, bls_power_peak, cfg)
 
-    # ── Detection decision ────────────────────────────────────────────────
+    # -- Detection decision ----------------------------------------------------
+    # Two independent gates must ALL pass:
+    #   1. BLS power peak above threshold (spectral significance)
+    #   2. Multi-point SNR above threshold (stacked transit depth)
+    # Additionally compute depth_snr using the GLOBAL flux RMS (period-independent)
+    # as a diagnostic and optional third gate. Using local_noise at the BLS period
+    # would be unreliable when BLS recovers the wrong period.
+    global_noise = float(np.std(flux)) if len(flux) > 1 else 1.0
     power_ok = bls_power_peak >= cfg["bls_power_threshold"]
     snr_ok = snr >= cfg["snr_threshold"]
-    candidate_detected = power_ok and snr_ok
+    depth_snr = (best_depth / global_noise) if global_noise > 0 else 0.0
+    depth_ok = depth_snr >= cfg.get("min_depth_snr", 0.5)
+    candidate_detected = power_ok and snr_ok and depth_ok
 
     if candidate_detected:
         detection_reason = (
             f"Detected: BLS power={bls_power_peak:.4f} (threshold={cfg['bls_power_threshold']:.3f}), "
-            f"SNR={snr:.2f} (threshold={cfg['snr_threshold']:.1f})"
+            f"SNR={snr:.2f} (threshold={cfg['snr_threshold']:.1f}), "
+            f"depth_snr={depth_snr:.2f} (threshold={cfg.get('min_single_point_depth_snr', 1.5):.1f})"
         )
         logger.info(
-            "bls_detector: candidate detected — period=%.4f days, depth=%.4f, "
-            "duration=%.4f days, power=%.4f, SNR=%.2f",
-            best_period, best_depth, best_duration, bls_power_peak, snr,
-        )
-    elif not power_ok and not snr_ok:
-        detection_reason = (
-            f"Not detected: BLS power={bls_power_peak:.4f} < {cfg['bls_power_threshold']:.3f} "
-            f"AND SNR={snr:.2f} < {cfg['snr_threshold']:.1f}. "
-            "Power spectrum shows no dominant peak — consistent with noise."
-        )
-        logger.info(
-            "bls_detector: no candidate — power=%.4f (below threshold), SNR=%.2f",
-            bls_power_peak, snr,
+            "bls_detector: candidate detected -- period=%.4f days, depth=%.4f, "
+            "duration=%.4f days, power=%.4f, SNR=%.2f, depth_snr=%.2f",
+            best_period, best_depth, best_duration, bls_power_peak, snr, depth_snr,
         )
     elif not power_ok:
         detection_reason = (
             f"Not detected: BLS power={bls_power_peak:.4f} < threshold={cfg['bls_power_threshold']:.3f} "
-            f"(SNR={snr:.2f} would pass but power is sub-threshold)."
+            f"(SNR={snr:.2f}, but power spectrum shows no dominant peak -- consistent with noise)."
         )
         logger.info("bls_detector: sub-threshold power=%.4f, SNR=%.2f", bls_power_peak, snr)
-    else:
+    elif not snr_ok:
         detection_reason = (
             f"Not detected: SNR={snr:.2f} < threshold={cfg['snr_threshold']:.1f} "
-            f"(BLS power={bls_power_peak:.4f} would pass but signal is too weak relative to noise)."
+            f"(BLS power={bls_power_peak:.4f} would pass but stacked SNR is sub-threshold)."
         )
         logger.info("bls_detector: sub-threshold SNR=%.2f, power=%.4f", snr, bls_power_peak)
+    else:
+        detection_reason = (
+            f"Not detected: depth_snr={depth_snr:.2f} < {cfg.get('min_depth_snr', 1.5):.1f} "
+            f"(BLS power={bls_power_peak:.4f}, SNR={snr:.2f} pass, but single-point depth is sub-noise)."
+        )
+        logger.info(
+            "bls_detector: sub-noise depth -- depth_snr=%.2f, SNR=%.2f, power=%.4f",
+            depth_snr, snr, bls_power_peak,
+        )
 
     elapsed_ms = (_time.perf_counter() - t0_wall) * 1000
     logger.debug("bls_detector: completed in %.0f ms (backend=%s)", elapsed_ms, backend)
@@ -428,11 +438,11 @@ def _run_scipy_bls(
             shifted = (phase[np.newaxis, :] - phi0_grid[:, np.newaxis]) % 1.0
             in_transit = shifted < q   # shape (n_phi0, n_points)
 
-            # Weighted sums: s = Σ w*delta for in-transit; r = Σ w for in-transit
+            # Weighted sums: s = sum(w*delta) for in-transit; r = sum(w) for in-transit
             s = (in_transit * weights[np.newaxis, :] * delta[np.newaxis, :]).sum(axis=1)
             r = (in_transit * weights[np.newaxis, :]).sum(axis=1)
 
-            # BLS statistic: SR = s² / (r * (1-r)), valid when 0 < r < 1
+            # BLS statistic: SR = s^2 / (r * (1-r)), valid when 0 < r < 1
             valid = (r > 0.001) & (r < 0.999)
             sr = np.where(valid, s ** 2 / (r * (1.0 - r)), 0.0)
 
@@ -455,7 +465,7 @@ def _run_scipy_bls(
         else:
             depth_arr[i] = 0.0
 
-    # ── Normalise power ───────────────────────────────────────────────────
+    # -- Normalise power -------------------------------------------------------
     max_power = power_arr.max()
     if max_power > 0:
         power_norm = power_arr / max_power
@@ -482,7 +492,7 @@ def _compute_snr(
     t0: float,
     duration: float,
     depth: float,
-) -> float:
+) -> tuple[float, float]:
     """
     Compute signal-to-noise ratio of the transit detection.
     SNR = depth / (local_noise / sqrt(n_in_transit))
@@ -500,28 +510,28 @@ def _compute_snr(
 
     Returns
     -------
-    float
-        SNR = depth / local_noise * sqrt(n_in_transit). Returns 0.0 if computation fails
-        or if out-of-transit points are insufficient.
+    tuple[float, float]
+        (snr, local_noise) where snr = depth/local_noise * sqrt(n_in_transit).
+        Returns (0.0, 0.0) if computation fails or out-of-transit points are insufficient.
     """
     if period <= 0 or duration <= 0 or depth <= 0:
-        return 0.0
+        return 0.0, 0.0
 
     try:
         phase = phase_fold(time, period=period, t0=t0)
         duration_phase = duration / period
-        # Exclude transit and a buffer zone (1.5× duration) from noise estimate
+        # Exclude transit and a buffer zone (1.5x duration) from noise estimate
         exclusion = 1.5 * duration_phase / 2.0
         out_of_transit = np.abs(phase) > exclusion
 
         if out_of_transit.sum() < 10:
             logger.warning("_compute_snr: too few out-of-transit points (%d)", out_of_transit.sum())
-            return 0.0
+            return 0.0, 0.0
 
         local_noise = float(np.std(flux[out_of_transit], ddof=1))
 
         if local_noise <= 0:
-            return 0.0
+            return 0.0, 0.0
 
         # Calculate number of points in transit
         in_transit = np.abs(phase) <= (duration_phase / 2.0)
@@ -529,11 +539,12 @@ def _compute_snr(
         if n_in_transit <= 0:
             n_in_transit = 1
 
-        return float((depth / local_noise) * np.sqrt(n_in_transit))
+        snr = float((depth / local_noise) * np.sqrt(n_in_transit))
+        return snr, local_noise
 
     except Exception as exc:
         logger.warning("_compute_snr failed: %s", exc)
-        return 0.0
+        return 0.0, 0.0
 
 
 # ---------------------------------------------------------------------------

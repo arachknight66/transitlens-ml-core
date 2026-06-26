@@ -154,7 +154,7 @@ def print_summary(summary: dict, mode: str) -> None:
     """Print a concise human-readable summary to stdout."""
     sep = "=" * 68
     print(f"\n{sep}")
-    print("  TransitLens Phase 4 — Injection-Recovery Summary")
+    print("  TransitLens Phase 4 -- Injection-Recovery Summary")
     print(f"{sep}")
     print(f"  Mode:           {mode}")
     print(f"  Total trials:   {summary.get('n_trials', '?')}")
@@ -185,11 +185,11 @@ def print_summary(summary: dict, mode: str) -> None:
             return "  N/A"
 
     print(f"  Detection recall (all):      {_p(summary.get('detection_recall'))}")
-    print(f"  Detection recall (SNR≥7):    {_p(summary.get('detection_recall_high_snr'))}")
-    print(f"  Period recovery ±1% (all):   {_p(summary.get('period_recovery_rate_1pct'))}")
-    print(f"  Period recovery ±1% (SNR≥7): {_p(summary.get('period_recovery_1pct_high_snr'))}")
-    print(f"  Period recovery ±5% (all):   {_p(summary.get('period_recovery_rate_5pct'))}")
-    print(f"  Period recovery ±5% (SNR≥7): {_p(summary.get('period_recovery_5pct_high_snr'))}")
+    print(f"  Detection recall (SNR>=7):   {_p(summary.get('detection_recall_high_snr'))}")
+    print(f"  Period recovery +-1% (all):  {_p(summary.get('period_recovery_rate_1pct'))}")
+    print(f"  Period recovery +-1% (>=7):  {_p(summary.get('period_recovery_1pct_high_snr'))}")
+    print(f"  Period recovery +-5% (all):  {_p(summary.get('period_recovery_rate_5pct'))}")
+    print(f"  Period recovery +-5% (>=7):  {_p(summary.get('period_recovery_5pct_high_snr'))}")
     print(f"  FP rate (controls):          {_p(summary.get('false_positive_rate_controls'))}")
     print(f"  Median period error:         {_f(summary.get('median_period_error_pct'))} %")
     print(f"  Median depth error:          {_f(summary.get('median_depth_error_pct'))} %")
@@ -197,33 +197,33 @@ def print_summary(summary: dict, mode: str) -> None:
     print(f"  Half-period alias rate:      {_p(summary.get('half_period_alias_rate'))}")
     print(f"  Double-period alias rate:    {_p(summary.get('double_period_alias_rate'))}")
     print(f"  Mean runtime/trial:          {_f(summary.get('mean_runtime_ms'), '.1f')} ms")
-    print(f"\n  --- Strict Targets (SNR ≥ 7) ---")
+    print(f"\n  --- Strict Targets (SNR >= 7) ---")
 
     def _check(val, thresh, ge=True):
         if val is None:
-            return "❓ N/A"
+            return "?? N/A"
         try:
             if np.isnan(val):
-                return "❓ N/A"
+                return "?? N/A"
             passed = val >= thresh if ge else val < thresh
-            return f"{'✅ PASS' if passed else '❌ FAIL'} ({val * 100:.1f}%)"
+            return f"{'[PASS]' if passed else '[FAIL]'} ({val * 100:.1f}%)"
         except Exception:
-            return "❓ N/A"
+            return "?? N/A"
 
     def _check_raw(val, thresh, ge=False):
         if val is None:
-            return "❓ N/A"
+            return "?? N/A"
         try:
             if np.isnan(val):
-                return "❓ N/A"
+                return "?? N/A"
             passed = val < thresh if not ge else val >= thresh
-            return f"{'✅ PASS' if passed else '❌ FAIL'} ({val * 100:.1f}%)"
+            return f"{'[PASS]' if passed else '[FAIL]'} ({val * 100:.1f}%)"
         except Exception:
-            return "❓ N/A"
+            return "?? N/A"
 
-    print(f"  Recall ≥ 90%:    {_check(summary.get('detection_recall_high_snr'), 0.90)}")
-    print(f"  PRR±1% ≥ 90%:   {_check(summary.get('period_recovery_1pct_high_snr'), 0.90)}")
-    print(f"  PRR±5% ≥ 95%:   {_check(summary.get('period_recovery_5pct_high_snr'), 0.95)}")
+    print(f"  Recall >= 90%:   {_check(summary.get('detection_recall_high_snr'), 0.90)}")
+    print(f"  PRR+-1% >= 90%:  {_check(summary.get('period_recovery_1pct_high_snr'), 0.90)}")
+    print(f"  PRR+-5% >= 95%:  {_check(summary.get('period_recovery_5pct_high_snr'), 0.95)}")
     print(f"  FP < 15%:        {_check_raw(summary.get('false_positive_rate_controls'), 0.15)}")
     print(f"\n{sep}\n")
 
@@ -235,8 +235,8 @@ def main(argv: list[str] | None = None) -> int:
     if args.verbose:
         logging.getLogger().setLevel(logging.DEBUG)
 
-    logger.info("TransitLens Phase 4 — Injection-Recovery Suite")
-    logger.info("Mode: %s — %s", args.mode, MODE_DESCRIPTIONS[args.mode])
+    logger.info("TransitLens Phase 4 -- Injection-Recovery Suite")
+    logger.info("Mode: %s -- %s", args.mode, MODE_DESCRIPTIONS[args.mode])
 
     # Resolve config path
     cfg_path = args.config
@@ -290,9 +290,9 @@ def main(argv: list[str] | None = None) -> int:
     report_path = out_path / "phase4_injection_recovery_report.md"
     trials_path = out_path / "injection_recovery_trials.csv"
 
-    print(f"  📄 Report:       {report_path}")
-    print(f"  📊 Trials CSV:   {trials_path}")
-    print(f"  📂 All results:  {out_path}")
+    print(f"  Report:        {report_path}")
+    print(f"  Trials CSV:    {trials_path}")
+    print(f"  All results:   {out_path}")
     print()
 
     return 0

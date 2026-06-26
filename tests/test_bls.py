@@ -361,23 +361,23 @@ class TestDetectionThresholds:
 class TestSNRComputation:
     def test_snr_positive_for_real_transit(self, candidate_a):
         t, f = candidate_a
-        snr = _compute_snr(t, f, period=3.42, t0=1.5, duration=0.1, depth=0.013)
+        snr, _ = _compute_snr(t, f, period=3.42, t0=1.5, duration=0.1, depth=0.013)
         assert snr > 5.0, f"Expected SNR > 5 for clean 1.3% transit, got {snr:.2f}"
 
     def test_snr_zero_for_zero_depth(self, candidate_a):
         t, f = candidate_a
-        snr = _compute_snr(t, f, period=3.42, t0=1.5, duration=0.1, depth=0.0)
+        snr, _ = _compute_snr(t, f, period=3.42, t0=1.5, duration=0.1, depth=0.0)
         assert snr == 0.0
 
     def test_snr_zero_for_zero_period(self, candidate_a):
         t, f = candidate_a
-        snr = _compute_snr(t, f, period=0.0, t0=1.5, duration=0.1, depth=0.013)
+        snr, _ = _compute_snr(t, f, period=0.0, t0=1.5, duration=0.1, depth=0.013)
         assert snr == 0.0
 
     def test_snr_scales_with_depth(self, candidate_a):
         t, f = candidate_a
-        snr_low  = _compute_snr(t, f, period=3.42, t0=1.5, duration=0.1, depth=0.005)
-        snr_high = _compute_snr(t, f, period=3.42, t0=1.5, duration=0.1, depth=0.020)
+        snr_low, _  = _compute_snr(t, f, period=3.42, t0=1.5, duration=0.1, depth=0.005)
+        snr_high, _ = _compute_snr(t, f, period=3.42, t0=1.5, duration=0.1, depth=0.020)
         assert snr_high > snr_low, "Deeper transit should have higher SNR"
 
 
@@ -472,7 +472,7 @@ class TestSciPyBLSBackend:
         t, f = tiny_noise_lc
         _, power, params = _run_scipy_bls(t, f, DEFAULT_CONFIG, 0.5, 13.5)
         peak_idx = power.argmax()
-        snr = _compute_snr(
+        snr, _ = _compute_snr(
             t, f,
             period=float(1.0 / np.linspace(1.0/13.5, 1.0/0.5, len(power))[peak_idx]),
             t0=float(params["t0"][peak_idx]),

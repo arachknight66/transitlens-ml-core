@@ -87,6 +87,7 @@ recovery_thresholds:
   alias_tolerance_pct: 1.0         # percent — for harmonic match
   min_snr_for_recall: 7.0          # SNR threshold for success-rate reporting
   detection_snr_threshold: 7.0     # pipeline SNR threshold (must match bls_detector DEFAULT_CONFIG)
+  min_depth_snr: 1.5               # single-point depth/noise guard (must match bls_detector DEFAULT_CONFIG)
   snr_bins:
     - 0
     - 3

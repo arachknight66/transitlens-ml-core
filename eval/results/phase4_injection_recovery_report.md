@@ -27,7 +27,7 @@
 | Dilution Factors | [1.0, 0.75, 0.5] |
 | Cadence | 2.0 min |
 | Time Span | 27.0 days |
-| Mean Runtime/Trial | 785.0 ms |
+| Mean Runtime/Trial | 966.2 ms |
 
 ---
 
@@ -36,19 +36,19 @@
 | Metric | All Injections | High-SNR (≥7) |
 |--------|---------------|---------------|
 | N Trials | 75 | 65 |
-| Detection Recall | 57.3% | 63.1% |
-| Period Recovery ±1% | 53.3% | 58.5% |
-| Period Recovery ±5% | 57.3% | 63.1% |
+| Detection Recall | 52.0% | 58.5% |
+| Period Recovery ±1% | 48.0% | 53.8% |
+| Period Recovery ±5% | 52.0% | 58.5% |
 | Median Period Error | 0.171 % | — |
-| Median Depth Error | 20.313 % | — |
+| Median Depth Error | 21.078 % | — |
 | Median Duration Error | 16.667 % | — |
-| FP Rate (Controls) | 64.0% | — |
+| FP Rate (Controls) | 12.0% | — |
 
 **Strict targets for SNR ≥ 7 (required for 95+ score):**
-- Detection Recall ≥ 90%: ❌ FAIL (63.1%)
-- Period Recovery ±1% ≥ 90%: ❌ FAIL (58.5%)
-- Period Recovery ±5% ≥ 95%: ❌ FAIL (63.1%)
-- FP Rate Controls < 15%: ❌ FAIL (64.0%)
+- Detection Recall ≥ 90%: ❌ FAIL (58.5%)
+- Period Recovery ±1% ≥ 90%: ❌ FAIL (53.8%)
+- Period Recovery ±5% ≥ 95%: ❌ FAIL (58.5%)
+- FP Rate Controls < 15%: ✅ PASS (12.0%)
 
 ---
 
@@ -57,11 +57,11 @@
 | SNR Bin | N | Detection Recall | Period Recovery 1% | Period Recovery 5% | Median Period Err% | Median Depth Err% | Median Dur Err% |
 |---------|---|-----------------|-------------------|-------------------|-------------------|------------------|----------------|
 | [0, 3) | 3 | 0.0% | 0.0% | 0.0% | N/A | N/A | N/A |
-| [3, 5) | 5 | 20.0% | 20.0% | 20.0% | 0.042 | 7.120 | 16.667 |
+| [3, 5) | 5 | 0.0% | 0.0% | 0.0% | N/A | N/A | N/A |
 | [5, 7) | 2 | 50.0% | 50.0% | 50.0% | 0.042 | 11.998 | 12.000 |
-| [7, 10) | 2 | 50.0% | 50.0% | 50.0% | 25.048 | 33.350 | 6.000 |
-| [10, 15) | 5 | 80.0% | 80.0% | 80.0% | 0.042 | 5.984 | 25.333 |
-| [15, 20) | 6 | 83.3% | 66.7% | 83.3% | 0.096 | 14.673 | 14.333 |
+| [7, 10) | 2 | 0.0% | 0.0% | 0.0% | N/A | N/A | N/A |
+| [10, 15) | 5 | 60.0% | 60.0% | 60.0% | 0.042 | 4.854 | 21.000 |
+| [15, 20) | 6 | 66.7% | 50.0% | 66.7% | 0.096 | 19.512 | 12.000 |
 | [20, 999) | 51 | 58.8% | 54.9% | 58.8% | 0.171 | 22.129 | 16.667 |
 
 
@@ -73,8 +73,8 @@
 
 | Depth (ppm) | N | Detection Recall | Period Recovery 1% | Median Period Err% |
 |-------------|---|-----------------|-------------------|-------------------|
-| 300 | 10 | 40.0% | 40.0% | 0.042 |
-| 1000 | 16 | 75.0% | 68.8% | 0.096 |
+| 300 | 10 | 20.0% | 20.0% | 0.042 |
+| 1000 | 16 | 62.5% | 56.2% | 0.096 |
 | 3000 | 15 | 53.3% | 46.7% | 1.194 |
 | 5000 | 16 | 62.5% | 56.2% | 0.274 |
 | 15000 | 18 | 50.0% | 50.0% | 25.075 |
@@ -84,9 +84,9 @@
 
 | Period (days) | N | Detection Recall | Period Recovery 1% | Median Period Err% |
 |--------------|---|-----------------|-------------------|-------------------|
-| 0.75 | 16 | 100.0% | 100.0% | 0.096 |
-| 1.50 | 8 | 100.0% | 100.0% | 0.171 |
-| 3.50 | 18 | 88.9% | 88.9% | 0.042 |
+| 0.75 | 16 | 93.8% | 93.8% | 0.096 |
+| 1.50 | 8 | 87.5% | 87.5% | 0.171 |
+| 3.50 | 18 | 77.8% | 77.8% | 0.042 |
 | 7.00 | 20 | 15.0% | 0.0% | 49.979 |
 | 12.00 | 13 | 0.0% | 0.0% | 50.055 |
 
@@ -98,10 +98,10 @@
 | Control Type | N Controls | N FP | FP Rate | Mean Conf (FP) | Median SNR (FP) |
 |---|---|---|---|---|---|
 | white_noise | 5 | 0 | 0.0% | N/A | N/A |
-| red_noise | 5 | 5 | 100.0% | 0.000 | 9.019 |
-| sinusoidal | 5 | 1 | 20.0% | 0.000 | 8.309 |
-| quasi_periodic | 5 | 5 | 100.0% | 0.000 | 9.173 |
-| systematics_gap | 5 | 5 | 100.0% | 0.000 | 9.033 |
+| red_noise | 5 | 1 | 20.0% | 0.000 | 8.655 |
+| sinusoidal | 5 | 0 | 0.0% | N/A | N/A |
+| quasi_periodic | 5 | 0 | 0.0% | N/A | N/A |
+| systematics_gap | 5 | 2 | 40.0% | 0.000 | 11.070 |
 
 
 **Interpretation**: A false positive is defined as `candidate_detected=True` with
@@ -114,9 +114,9 @@ Values above 10-15% indicate the BLS detector is too sensitive to noise patterns
 
 | Metric | Value |
 |--------|-------|
-| Half-period alias rate (P/2 recovered instead of P) | 30.7% |
+| Half-period alias rate (P/2 recovered instead of P) | 29.3% |
 | Double-period alias rate (2P recovered instead of P) | 0.0% |
-| Any harmonic match rate (within 5%) | 88.0% |
+| Any harmonic match rate (within 5%) | 81.3% |
 
 **Note**: Alias rates are computed only over detected injection trials.
 High half-period alias rates indicate the BLS is finding the dominant harmonic
@@ -141,14 +141,12 @@ A well-calibrated system should have: detected_correct > missed > false_positive
 The following conditions showed detection recall < 50% or FP rate > 15%:
 
 - **Low SNR [0-3)**: detection recall = 0.0% (N=3)
-- **Low SNR [3-5)**: detection recall = 20.0% (N=5)
-- **Depth 300 ppm**: detection recall = 40.0% (N=10)
+- **Low SNR [3-5)**: detection recall = 0.0% (N=5)
+- **Depth 300 ppm**: detection recall = 20.0% (N=10)
 - **Period 7.00 d**: detection recall = 15.0% (N=20)
 - **Period 12.00 d**: detection recall = 0.0% (N=13)
-- **FP elevated for red_noise**: FP rate = 100.0% (N=5)
-- **FP elevated for sinusoidal**: FP rate = 20.0% (N=5)
-- **FP elevated for quasi_periodic**: FP rate = 100.0% (N=5)
-- **FP elevated for systematics_gap**: FP rate = 100.0% (N=5)
+- **FP elevated for red_noise**: FP rate = 20.0% (N=5)
+- **FP elevated for systematics_gap**: FP rate = 40.0% (N=5)
 
 These regimes should be the focus of Phase 5 classifier strengthening.
 
