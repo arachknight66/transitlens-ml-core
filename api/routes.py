@@ -200,33 +200,16 @@ async def analyze_tess(
     if dp_path.exists() and str(dp_path) not in sys.path:
         sys.path.insert(0, str(dp_path))
         
-    from interface import load_light_curve  # type: ignore
     try:
-        data_config = {}
-        if sector is not None:
-            data_config["sector"] = sector
-            
-        lc_data = load_light_curve(
-            source="tess",
-            target_id=clean_id,
-            config=data_config
-        )
-    except Exception as e:
-        raise HTTPException(status_code=422, detail=f"Failed to fetch TESS data: {str(e)}")
-        
-    # Combine extracted metadata with provided metadata
-    extracted_metadata = lc_data.get("metadata", {})
-    parsed_metadata.update(extracted_metadata)
-    
-    try:
-        result = analyze_light_curve(
-            time=lc_data["time"],
-            flux=lc_data["flux"],
+        from pipeline import analyze_tess_multi_sector
+        result = analyze_tess_multi_sector(
+            tic_id=clean_id,
+            sectors=None if sector is None else [sector],
             metadata=parsed_metadata,
             config=parsed_config,
         )
-    except InvalidInputError as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except Exception as e:
+        raise HTTPException(status_code=422, detail=f"Failed to fetch or analyze TESS data: {str(e)}")
         
     return result
 

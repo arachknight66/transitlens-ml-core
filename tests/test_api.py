@@ -192,7 +192,48 @@ class TestAnalyzeFileAndTess:
         assert data["target_id"] == "TIC 261136679"
         assert "predicted_class" in data
 
-    def test_analyze_tess_returns_200(self):
+    def test_analyze_tess_returns_200(self, monkeypatch):
+        mock_result = {
+            "target_id": "TIC 261136679",
+            "candidate_detected": True,
+            "predicted_class": "exoplanet_transit",
+            "confidence": 0.95,
+            "period_days": 13.2316,
+            "duration_days": 0.1120,
+            "depth": 0.0002,
+            "snr": 24.75,
+            "transit_count": 2,
+            "features": {
+                "depth": 0.0002,
+                "snr": 24.75,
+                "bls_power": 1.0,
+                "period": 13.2316,
+                "duration": 0.1120,
+                "odd_even_mismatch": 0.0,
+                "v_shape_parameter": 0.0,
+                "sde": 5.75,
+                "secondary_depth": 0.0,
+                "crowding_metric": 1.0,
+                "centroid_offset_sigma": 0.0,
+                "background_contamination_ratio": 0.0,
+                "cdpp_noise": 0.0001,
+                "rms_scatter": 0.0001,
+                "depth_to_noise_ratio": 10.0,
+                "phase_shape_kurtosis": 2.0
+            },
+            "explanation": "Mocked successful prediction.",
+            "plots": {
+                "raw_lightcurve": "",
+                "cleaned_lightcurve": "",
+                "periodogram": "",
+                "phase_folded": ""
+            },
+            "processing_time_ms": 150.0,
+            "pipeline_version": "0.1.0"
+        }
+        import pipeline
+        monkeypatch.setattr(pipeline, "analyze_tess_multi_sector", lambda *args, **kwargs: mock_result)
+
         response = client.post(
             "/analyze/tess",
             data={"tic_id": "261136679"}

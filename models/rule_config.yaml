@@ -186,10 +186,11 @@ confidence:
 
 # ── Optional ML classifier ──────────────────────────────────────────────────
 ml_classifier:
-  # Set to true only when trained .pkl model files exist in models/
+  # Set to false to enforce rule-only restricted classification.
   enabled: false
-  dev_fallback: true
+  dev_fallback: false
   use_rule_fallback_on_disagreement: true
+  production_state: "rule_only_restricted"
 
   # Which model to use: "rf" (Random Forest) or "xgb" (XGBoost)
   model_type: "rf"

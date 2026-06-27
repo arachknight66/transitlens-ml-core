@@ -316,63 +316,8 @@ def save_confusion_matrix(true_labels: list[str], pred_labels: list[str], output
     except Exception as e:
         logger.warning(f"Failed to generate confusion matrix plot: {e}")
 
-def evaluate_gold_set(gold_csv_path: Path) -> tuple[list[dict], dict]:
-    """Evaluates gold set targets using true labels from CSV and predictions from sample_results.json."""
-    df = pd.read_csv(gold_csv_path)
-    sample_results_path = _REPO_ROOT.parent / "transitlens-platform" / "demo_data" / "sample_results.json"
-    
-    if not sample_results_path.exists():
-        logger.warning(f"sample_results.json not found at {sample_results_path}")
-        return [], {"accuracy": 1.0, "per_class": {}, "period_recovery_rate": 1.0}
-        
-    with open(sample_results_path, "r", encoding="utf-8") as f:
-        sample_results = json.load(f)
-        
-    results = []
-    true_labels = []
-    pred_labels = []
-    
-    for idx, row in df.iterrows():
-        tid = row["target_id"]
-        true_label = ALIASES.get(row["label"], row["label"])
-        
-        res = sample_results.get(tid)
-        if not res:
-            logger.warning(f"Precomputed result for gold target {tid} not found in sample_results.json")
-            continue
-            
-        pred_label = ALIASES.get(res.get("predicted_class"), res.get("predicted_class"))
-        
-        results.append({
-            "target_id": tid,
-            "true_label": true_label,
-            "predicted_class": pred_label,
-            "confidence": res.get("confidence", 0.0),
-            "period_days": res.get("period_days"),
-            "depth": res.get("depth"),
-            "duration_days": res.get("duration_days"),
-            "true_period": float(row["period_days"]) if pd.notna(row.get("period_days")) else None,
-            "true_depth": float(row["depth_frac"]) if pd.notna(row.get("depth_frac")) else None,
-            "true_duration": float(row["duration_days"]) if pd.notna(row.get("duration_days")) else None,
-        })
-        true_labels.append(true_label)
-        pred_labels.append(pred_label)
-        
-    acc, per_class = classification_report(true_labels, pred_labels)
-    per_class_dict = {
-        m.label: {
-            "precision": float(m.precision),
-            "recall": float(m.recall),
-            "f1": float(m.f1),
-            "support": int(m.support)
-        }
-        for m in per_class
-    }
-    metrics = {
-        "accuracy": acc,
-        "per_class": per_class_dict,
-    }
-    return results, metrics
+# evaluate_gold_set deleted to avoid stale precomputed mock metrics on Kepler/TESS gold sets.
+
 
 def main():
     import argparse
@@ -399,11 +344,23 @@ def main():
     splits_dir = _DP_PATH / "datasets" / "splits"
     val_csv = splits_dir / "val.csv"
     test_csv = splits_dir / "test.csv"
-    gold_csv = _DP_PATH / "datasets" / "gold_set.csv"
     
     processed_dir = _DP_PATH / "datasets" / "processed" / "lightcurves"
     val_manifest = processed_dir / "splits" / "val_manifest.csv"
     test_manifest = processed_dir / "splits" / "test_manifest.csv"
+
+    # Validate model config file exists
+    config_path = _REPO_ROOT / "models" / "rule_config.yaml"
+    if not config_path.exists():
+        raise FileNotFoundError(f"Critical model artifact missing: rule_config.yaml not found at {config_path}")
+    
+    with open(config_path, "r") as f:
+        rule_cfg = yaml.safe_load(f)
+    ml_cfg = rule_cfg.get("ml_classifier", {})
+    if ml_cfg.get("enabled", False) and not ml_cfg.get("dev_fallback", False):
+        model_path = _REPO_ROOT / "models" / "final_classifier.pkl"
+        if not model_path.exists():
+            raise FileNotFoundError(f"Critical model artifact final_classifier.pkl not found at {model_path} with ML enabled.")
 
     # 1. Optionally run Phase 4 Injection-Recovery suite
     injection_summary = None
@@ -435,20 +392,29 @@ def main():
             "Run 'python -m eval.run_injection_recovery --mode standard' for a full benchmark."
         )
 
-    # 2. Load Split Datasets
+    # 2. Load Split Datasets (Strictly enforce dataset presence)
     if val_manifest.exists() and test_manifest.exists():
         logger.info("Processed NPZ manifests found. Running evaluation on Phase 1 NPZ dataset splits...")
         val_targets = load_npz_targets(val_manifest)
         test_targets = load_npz_targets(test_manifest)
     else:
         logger.info("Processed manifests not found. Falling back to old CSV targets...")
+        if not val_csv.exists() or not test_csv.exists():
+            raise FileNotFoundError(
+                f"Missing critical split datasets. Manifests ({val_manifest}, {test_manifest}) "
+                f"and CSVs ({val_csv}, {test_csv}) are not found."
+            )
         val_targets = load_csv_targets(val_csv)
         test_targets = load_csv_targets(test_csv)
+    
+    if not val_targets or len(val_targets) == 0:
+        raise ValueError("Validation targets dataset is empty or could not be loaded!")
+    if not test_targets or len(test_targets) == 0:
+        raise ValueError("Test targets dataset is empty or could not be loaded!")
     
     # Run evaluation
     val_results, val_metrics = evaluate_dataset("Validation Split", val_targets)
     test_results, test_metrics = evaluate_dataset("Test Split", test_targets)
-    gold_results, gold_metrics = evaluate_gold_set(gold_csv)
     
     # Compute aggregate metrics
     all_true = [r["true_label"] for r in val_results + test_results]
@@ -486,7 +452,6 @@ def main():
     metrics_json = {
         "val_metrics": val_metrics,
         "test_metrics": test_metrics,
-        "gold_metrics": gold_metrics,
         "overall_period_recovery_pct": float(period_recovery_rate(
             [{"period_days": r["period_days"], "metadata": {"true_period": r["true_period"]}} for r in val_results + test_results],
             tolerance_pct=1.0
@@ -697,8 +662,8 @@ Listed below are the clean exoplanet transit targets that were flagged with high
 - **Overall Period Recovery Rate**: {metrics_json['overall_period_recovery_pct']:.2f}% (tolerance < 1.0%)
 - **Validation Split Classification Accuracy**: {val_metrics['accuracy'] * 100:.2f}%
 - **Blind Test Split Classification Accuracy**: {test_metrics['accuracy'] * 100:.2f}%
-- **Gold Target Set Accuracy**: {gold_metrics['accuracy'] * 100:.2f}%
 - **Average Pipeline Execution Latency**: {val_metrics['average_runtime_ms']:.1f} ms per target
+
 
 ## 2. Classification Performance (Test Split)
 | Class Label | Precision | Recall | F1-Score |

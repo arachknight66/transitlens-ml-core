@@ -289,9 +289,8 @@ def classify(
                     f"ML classifier execution failed (and dev_fallback=false): {exc}. "
                     "Please ensure the ML models are trained by running: python train_model.py"
                 ) from exc
-    else:
-        if dev_fallback:
-            logger.info("ML classifier disabled — using rule-based diagnostic because dev_fallback=true")
+        if dev_fallback or ml_cfg.get("production_state") == "rule_only_restricted":
+            logger.info("ML classifier disabled — using rule-based diagnostic because dev_fallback=true or production_state is rule_only_restricted")
             ml_class = None
             ml_agreement = True
         else:

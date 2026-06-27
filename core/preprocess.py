@@ -130,6 +130,9 @@ def clean(
     time: np.ndarray,
     flux: np.ndarray,
     config: dict | None = None,
+    period: float | None = None,
+    epoch: float | None = None,
+    duration: float | None = None,
 ) -> PreprocessResult:
     """
     Full preprocessing pipeline: validate → clean → detrend → normalise.
@@ -143,6 +146,12 @@ def clean(
     config : dict or None
         Optional override for preprocessing parameters. Any key present
         overrides the corresponding entry in DEFAULT_CONFIG.
+    period : float or None
+        Injected or catalog transit period (days). Used for transit-aware masking.
+    epoch : float or None
+        Injected or catalog transit epoch (days, BTJD). Used for transit-aware masking.
+    duration : float or None
+        Injected or catalog transit duration (days). Used for transit-aware masking.
 
     Returns
     -------
@@ -150,7 +159,7 @@ def clean(
         Cleaned arrays plus provenance metadata.
 
     Raises
-    ------
+    -------
     InvalidInputError
         If time/flux have mismatched length, time is non-monotonic,
         or flux contains infinities.
@@ -201,12 +210,22 @@ def clean(
     # ------------------------------------------------------------------
     # Step 4: Trend removal (detrending)
     # ------------------------------------------------------------------
+    # Construct transit mask if parameters are provided
+    if period is not None and epoch is not None and duration is not None:
+        phase = ((time - epoch) % period) / period
+        phase = np.where(phase > 0.5, phase - 1.0, phase)
+        duration_phase = duration / period
+        mask = np.abs(phase) < (duration_phase * 0.5 * 1.2)
+    else:
+        mask = None
+
     try:
         flux = _detrend(
             time, flux,
             method=cfg["detrend_method"],
             window_days=cfg["detrend_window_days"],
             poly_degree=cfg["detrend_poly_degree"],
+            mask=mask,
         )
     except Exception as exc:
         raise PreprocessingError(
@@ -323,12 +342,66 @@ def _sigma_clip_flux(
     return time[mask], flux[mask]
 
 
+def _mask_and_interpolate_flux(time: np.ndarray, flux: np.ndarray, mask: np.ndarray) -> np.ndarray:
+    """Replaces in-transit points (mask == True) with linear interpolation of out-of-transit points."""
+    if not np.any(mask) or not np.any(~mask):
+        return flux.copy()
+    filled = flux.copy()
+    filled[mask] = np.interp(time[mask], time[~mask], flux[~mask])
+    return filled
+
+
+def biweight_location(x: np.ndarray) -> float:
+    """Robust biweight location estimator."""
+    if len(x) == 0:
+        return 1.0
+    M = np.median(x)
+    mad = np.median(np.abs(x - M))
+    if mad == 0.0:
+        return M
+    c = 6.0
+    u = (x - M) / (c * mad + 1e-12)
+    mask = np.abs(u) < 1.0
+    if not np.any(mask):
+        return M
+    w = (1.0 - u[mask]**2)**2
+    sum_w = np.sum(w)
+    if sum_w == 0.0:
+        return M
+    return M + np.sum(w * (x[mask] - M)) / sum_w
+
+
+def _detrend_biweight(
+    time: np.ndarray,
+    flux: np.ndarray,
+    window_days: float,
+) -> np.ndarray:
+    """Divide flux by rolling biweight location baseline."""
+    cadence = estimate_cadence(time)
+    window_points = max(3, int(round(window_days / cadence)))
+    if window_points % 2 == 0:
+        window_points += 1
+    
+    half_w = window_points // 2
+    n = len(flux)
+    baseline = np.empty_like(flux)
+    
+    for i in range(n):
+        start = max(0, i - half_w)
+        end = min(n, i + half_w + 1)
+        baseline[i] = biweight_location(flux[start:end])
+        
+    baseline = np.where(np.abs(baseline) < 1e-10, 1.0, baseline)
+    return flux / baseline
+
+
 def _detrend(
     time: np.ndarray,
     flux: np.ndarray,
     method: str,
     window_days: float,
     poly_degree: int,
+    mask: np.ndarray | None = None,
 ) -> np.ndarray:
     """
     Remove low-frequency trends from the flux array.
@@ -342,10 +415,15 @@ def _detrend(
     method : str
         "running_median" — divide by running median (default, more robust).
         "polynomial"     — divide by best-fit polynomial.
+        "savgol"         — Savitzky-Golay filtering.
+        "spline"         — Univariate spline.
+        "biweight"       — Biweight rolling filter.
     window_days : float
-        Window size for running median detrending in days.
+        Window size for detrending in days.
     poly_degree : int
         Polynomial degree for polynomial detrending.
+    mask : np.ndarray or None
+        Boolean mask of in-transit points (True = in-transit).
 
     Returns
     -------
@@ -353,17 +431,31 @@ def _detrend(
         Detrended flux array.
     """
     if method == "running_median":
-        return _detrend_running_median(time, flux, window_days)
+        if mask is not None and np.any(mask):
+            filled_flux = _mask_and_interpolate_flux(time, flux, mask)
+            return _detrend_running_median(time, filled_flux, window_days) * (flux / filled_flux)
+        else:
+            return _detrend_running_median(time, flux, window_days)
     elif method == "polynomial":
-        return _detrend_polynomial(time, flux, poly_degree)
+        return _detrend_polynomial(time, flux, poly_degree, mask)
     elif method == "savgol":
-        return _detrend_savgol(time, flux, window_days)
+        if mask is not None and np.any(mask):
+            filled_flux = _mask_and_interpolate_flux(time, flux, mask)
+            return _detrend_savgol(time, filled_flux, window_days) * (flux / filled_flux)
+        else:
+            return _detrend_savgol(time, flux, window_days)
     elif method == "spline":
-        return _detrend_spline(time, flux, window_days)
+        return _detrend_spline(time, flux, window_days, mask)
+    elif method == "biweight":
+        if mask is not None and np.any(mask):
+            filled_flux = _mask_and_interpolate_flux(time, flux, mask)
+            return _detrend_biweight(time, filled_flux, window_days) * (flux / filled_flux)
+        else:
+            return _detrend_biweight(time, flux, window_days)
     else:
         raise ValueError(
             f"Unknown detrend method '{method}'. "
-            "Expected 'running_median', 'polynomial', 'savgol', or 'spline'."
+            "Expected 'running_median', 'polynomial', 'savgol', 'spline', or 'biweight'."
         )
 
 
@@ -393,11 +485,14 @@ def _detrend_spline(
     time: np.ndarray,
     flux: np.ndarray,
     window_days: float,
+    mask: np.ndarray | None = None,
 ) -> np.ndarray:
     """Divide flux by a UnivariateSpline baseline fit."""
     from scipy.interpolate import UnivariateSpline
-    # Determine degree and smoothing based on window_days
-    spl = UnivariateSpline(time, flux, k=3)
+    if mask is not None and np.any(mask) and np.any(~mask):
+        spl = UnivariateSpline(time[~mask], flux[~mask], k=3)
+    else:
+        spl = UnivariateSpline(time, flux, k=3)
     # smoothing factor s balances fitting vs smoothness
     spl.set_smoothing_factor(len(time) * 0.0001)
     baseline = spl(time)
@@ -451,6 +546,7 @@ def _detrend_polynomial(
     time: np.ndarray,
     flux: np.ndarray,
     poly_degree: int,
+    mask: np.ndarray | None = None,
 ) -> np.ndarray:
     """
     Divide flux by a polynomial baseline fit to remove slow trends.
@@ -466,9 +562,11 @@ def _detrend_polynomial(
 
     t_norm = 2.0 * (time - t_min) / (t_max - t_min) - 1.0
 
-    # Fit polynomial to the full flux (not just out-of-transit,
-    # since we don't know transit locations yet)
-    coeffs = np.polyfit(t_norm, flux, deg=poly_degree)
+    # Fit polynomial to out-of-transit points only if mask is present
+    if mask is not None and np.any(mask) and np.any(~mask):
+        coeffs = np.polyfit(t_norm[~mask], flux[~mask], deg=poly_degree)
+    else:
+        coeffs = np.polyfit(t_norm, flux, deg=poly_degree)
     baseline = np.polyval(coeffs, t_norm)
 
     # Guard against zero or near-zero baseline

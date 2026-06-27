@@ -24,13 +24,22 @@ jobs:
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
-        if [ -f requirements-lock.txt ]; then pip install -r requirements-lock.txt; else pip install -r requirements.txt; fi
+        pip install -r transitlens-ml-core/requirements.txt
+        pip install -r transitlens-data-pipeline/requirements.txt
+        pip install -r transitlens-platform/requirements.txt
         pip install pytest
 
     - name: Run diagnostic checks
       run: |
+        cd transitlens-ml-core
         python core/cli.py diagnose
 
-    - name: Run reproducibility tests
+    - name: Run unit and integration tests
       run: |
-        pytest tests/test_reproducibility.py
+        python -m pytest transitlens-ml-core/
+        python -m pytest transitlens-data-pipeline/
+
+    - name: Run end-to-end smoke test
+      run: |
+        python transitlens-ml-core/eval/run_smoke_test.py
+

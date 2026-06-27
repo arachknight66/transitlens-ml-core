@@ -58,6 +58,7 @@ class MLClassifierSchema(BaseModel):
     dev_fallback: bool = Field(default=False)
     blend_weight: float = Field(default=0.0, ge=0.0, le=1.0)
     use_rule_fallback_on_disagreement: bool = Field(default=True)
+    production_state: str | None = Field(default=None)
 
 class PlottingSchema(BaseModel):
     model_config = {"extra": "forbid"}

@@ -855,3 +855,170 @@ def _check_invariants(result: dict) -> None:
     from core.feature_extractor import FEATURE_NAMES
     if set(result["features"].keys()) != set(FEATURE_NAMES):
         logger.warning("invariant: features dict has wrong keys")
+
+
+def analyze_tess_multi_sector(
+    tic_id: str,
+    sectors: list[int] | None = None,
+    metadata: dict | None = None,
+    config: dict | None = None,
+) -> dict:
+    """
+    Retrieves and analyzes multiple sectors for a TESS target.
+    Analyzes each sector separately first, validates them, and optionally
+    combines them after normalization and offset alignment.
+    """
+    import os
+    import sys
+    from pathlib import Path
+    logger = logging.getLogger(__name__)
+
+    # Ensure data-pipeline is in path
+    repo_root = Path(__file__).resolve().parent
+    dp_path = repo_root.parent / "transitlens-data-pipeline"
+    if dp_path.exists() and str(dp_path) not in sys.path:
+        sys.path.insert(0, str(dp_path))
+
+    from interface import load_light_curve
+    from real_tess.mast_loader import TessDataUnavailableError
+
+    # Ensure input metadata has target_id set
+    clean_id = tic_id.upper().replace("TIC", "").replace("-", "").strip()
+    clean_id = "".join(clean_id.split())
+    
+    merged_metadata = metadata.copy() if metadata else {}
+    if "target_id" not in merged_metadata:
+        merged_metadata["target_id"] = f"TIC {clean_id}"
+
+    # Resolve cache directory
+    cache_dir = config.get("cache_dir") if config else None
+    if not cache_dir:
+        cache_dir = str(dp_path / "real_tess" / "cache")
+
+    # 1. If sectors not specified, query MAST to discover them
+    if not sectors:
+        try:
+            try:
+                from astroquery.mast import Observations
+                Observations.TIMEOUT = 10
+            except Exception:
+                pass
+            import lightkurve as lk
+            search_result = lk.search_lightcurve(f"TIC {clean_id}", mission="TESS")
+            all_sectors = []
+            if len(search_result) > 0:
+                if hasattr(search_result, "sequence_number"):
+                    all_sectors = sorted(list(set(int(s) for s in search_result.sequence_number)))
+                elif hasattr(search_result, "sector"):
+                    all_sectors = sorted(list(set(int(s) for s in search_result.sector)))
+                else:
+                    table = getattr(search_result, "table", None)
+                    if table is not None:
+                        col = "sequence_number" if "sequence_number" in table.colnames else "sector"
+                        all_sectors = sorted(list(set(int(s) for s in table[col])))
+            
+            # Prioritize cached sectors
+            cached_secs = []
+            non_cached_secs = []
+            for sec in all_sectors:
+                p3 = os.path.join(cache_dir, f"TIC{clean_id}_sector{sec:03d}.fits")
+                p2 = os.path.join(cache_dir, f"TIC{clean_id}_sector{sec:02d}.fits")
+                if os.path.exists(p3) or os.path.exists(p2):
+                    cached_secs.append(sec)
+                else:
+                    non_cached_secs.append(sec)
+            
+            # If cached sectors exist, only use cached sectors. Otherwise, download the single newest sector.
+            if cached_secs:
+                sectors = sorted(cached_secs)
+            else:
+                non_cached_secs.sort(reverse=True)
+                sectors = sorted(non_cached_secs[:1])
+        except Exception as e:
+            logger.warning(f"Failed to query available sectors on MAST: {e}. Falling back to default best sector.")
+            sectors = []
+
+    # If still no sectors, fall back to best single sector via load_light_curve
+    if not sectors:
+        lc_data = load_light_curve(source="tess", target_id=tic_id, config=config)
+        sector_metadata = {**merged_metadata, **lc_data.get("metadata", {})}
+        sector_metadata["target_id"] = f"TIC {clean_id}"
+        return analyze_light_curve(lc_data["time"], lc_data["flux"], sector_metadata, config)
+
+    logger.info(f"Multi-sector analysis triggered for TIC {tic_id} over sectors: {sectors}")
+
+    sector_results = []
+    times_all = []
+    fluxes_all = []
+
+    for sec in sectors:
+        try:
+            # Load sector
+            lc_data = load_light_curve(source="tess", target_id=tic_id, config={"sector": sec})
+            time_sec = np.array(lc_data["time"])
+            flux_sec = np.array(lc_data["flux"])
+            
+            # Analyze separately first
+            sec_metadata = {**merged_metadata, **lc_data.get("metadata", {})}
+            sec_metadata["target_id"] = f"TIC {clean_id}"
+            res_sec = analyze_light_curve(time_sec, flux_sec, sec_metadata, config)
+            sector_results.append((sec, res_sec))
+            
+            # Normalize and offset checks
+            median_sec = np.median(flux_sec)
+            if abs(median_sec - 1.0) > 0.05:
+                # Re-align to 1.0
+                flux_sec = flux_sec / median_sec
+                
+            times_all.append(time_sec)
+            fluxes_all.append(flux_sec)
+        except Exception as e:
+            logger.warning(f"Failed to load or analyze sector {sec}: {e}")
+
+    if not sector_results:
+        raise TessDataUnavailableError(f"No sectors could be successfully loaded or analyzed for TIC {tic_id}")
+
+    # If only one sector succeeded, return its result
+    if len(sector_results) == 1:
+        res = sector_results[0][1]
+        if "metadata" in res:
+            res["metadata"]["target_id"] = f"TIC {clean_id}"
+        return res
+
+    # 2. Combine sectors after sorting by time
+    combined_time = np.concatenate(times_all)
+    combined_flux = np.concatenate(fluxes_all)
+    
+    sort_idx = np.argsort(combined_time)
+    combined_time = combined_time[sort_idx]
+    combined_flux = combined_flux[sort_idx]
+
+    # Deduplicate timestamps just in case of overlaps
+    _, unique_idx = np.unique(combined_time, return_index=True)
+    combined_time = combined_time[unique_idx]
+    combined_flux = combined_flux[unique_idx]
+
+    # Combine metadata
+    combined_metadata = merged_metadata.copy()
+    combined_metadata["target_id"] = f"TIC {clean_id}"
+    combined_metadata["sector"] = sectors  # list of sectors
+    combined_metadata["cadence_min"] = sector_results[0][1].get("metadata", {}).get("cadence_min", 2.0)
+    combined_metadata["time_span_days"] = float(combined_time[-1] - combined_time[0])
+    combined_metadata["multi_sector_details"] = {
+        "analyzed_sectors": sectors,
+        "single_sector_predictions": {
+            str(sec): {
+                "predicted_class": res.get("predicted_class"),
+                "confidence": res.get("confidence"),
+                "period_days": res.get("period_days"),
+                "candidate_detected": res.get("candidate_detected")
+            }
+            for sec, res in sector_results
+        }
+    }
+
+    # Run full analysis on combined light curve
+    combined_result = analyze_light_curve(combined_time, combined_flux, combined_metadata, config)
+    combined_result["metadata"] = combined_metadata
+    
+    return combined_result

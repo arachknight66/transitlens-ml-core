@@ -141,18 +141,22 @@ def main():
         logger.error(f"Promotion REJECTED: Failed to load or run staging classifier wrapper: {e}")
         sys.exit(1)
         
-    # 5. Backup current production files
-    production_dir.mkdir(parents=True, exist_ok=True)
+    # Add data pipeline to path for loading light curve
+    if str(REPO_ROOT / "transitlens-data-pipeline") not in sys.path:
+        sys.path.insert(0, str(REPO_ROOT / "transitlens-data-pipeline"))
+
+    # 5. Backup current production directory if it exists
     backup_dir = production_dir.parent / f"backup_production_{int(time.time())}"
-    
-    logger.info(f"Backing up current production model to: {backup_dir}")
     existing_files_moved = False
-    for fname in required_files + ["model_card.md", "classification_report.json", "confusion_matrix.json", "per_sector_metrics.json", "rule_config.yaml"]:
-        p = production_dir / fname
-        if p.exists():
-            backup_dir.mkdir(parents=True, exist_ok=True)
-            shutil.copy(p, backup_dir / fname)
+    
+    if production_dir.exists():
+        logger.info(f"Backing up current production model directory to: {backup_dir}")
+        try:
+            shutil.copytree(production_dir, backup_dir)
             existing_files_moved = True
+        except Exception as e:
+            logger.error(f"Failed to backup existing production directory: {e}")
+            sys.exit(1)
             
     # 6. Copy staging files to temporary directory for final check
     temp_prod_dir = production_dir.parent / "temp_production"
@@ -180,34 +184,60 @@ def main():
     # 7. Smoke test the temporary production directory
     logger.info("Executing inference smoke test on temp production model...")
     try:
+        # A. Mock features test
         mock_features = {k: 0.1 for k in FEATURE_NAMES}
-        res = classify(mock_features, rule_config_path=str(temp_prod_dir / "rule_config.yaml"))
-        logger.info(f"Smoke test prediction succeeded: {res.predicted_class}")
+        res_mock = classify(mock_features, rule_config_path=str(temp_prod_dir / "rule_config.yaml"))
+        logger.info(f"Mock features smoke test prediction succeeded: {res_mock.predicted_class}")
+        
+        # B. Real target smoke test
+        from interface import load_light_curve
+        from pipeline import analyze_light_curve
+        lc_data = load_light_curve("synthetic", "candidate_a", {"generate": True})
+        res_real = analyze_light_curve(
+            time=lc_data["time"],
+            flux=lc_data["flux"],
+            metadata=lc_data["metadata"],
+            rule_config_path=str(temp_prod_dir / "rule_config.yaml")
+        )
+        logger.info(f"Real target smoke test prediction succeeded: {res_real['predicted_class']}")
     except Exception as e:
         logger.error(f"Promotion REJECTED: Inference smoke test failed on promoted copy: {e}")
         if temp_prod_dir.exists():
             shutil.rmtree(temp_prod_dir)
         sys.exit(1)
         
-    # 8. Atomic replacement of production artifacts
+    # 8. Atomic replacement of production directory
     logger.info("Promoting artifacts atomically to production directory...")
     try:
+        # Clear existing directory or create it
+        if production_dir.exists():
+            for item in production_dir.iterdir():
+                if item.is_dir():
+                    shutil.rmtree(item)
+                else:
+                    item.unlink()
+        else:
+            production_dir.mkdir(parents=True, exist_ok=True)
+            
         # Move all files from temp_prod_dir directly into production_dir
         for item in temp_prod_dir.iterdir():
             dest = production_dir / item.name
-            if dest.exists():
-                dest.unlink()
             shutil.move(str(item), str(dest))
             
         shutil.rmtree(temp_prod_dir)
         logger.info("Model promoted to PRODUCTION successfully!")
     except Exception as e:
-        logger.error(f"Promotion FAILED during final file moves: {e}")
-        # Attempt restore if possible
+        logger.error(f"Promotion FAILED during final folder moves: {e}")
+        # Atomic Rollback
         if existing_files_moved and backup_dir.exists():
-            logger.info("Attempting to restore original model from backup...")
-            for fname in os.listdir(backup_dir):
-                shutil.copy(backup_dir / fname, production_dir / fname)
+            logger.info("Attempting rollback from backup...")
+            try:
+                if production_dir.exists():
+                    shutil.rmtree(production_dir)
+                shutil.copytree(backup_dir, production_dir)
+                logger.info("Rollback completed successfully.")
+            except Exception as re:
+                logger.error(f"FATAL: Rollback failed: {re}")
         sys.exit(1)
 
 if __name__ == "__main__":

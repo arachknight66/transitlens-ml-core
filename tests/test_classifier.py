@@ -379,6 +379,7 @@ class TestMLClassifierFallback:
         cfg = _load_rule_config()
         modified = copy.deepcopy(cfg)
         modified["ml_classifier"]["enabled"] = True
+        modified["ml_classifier"]["dev_fallback"] = True
 
         config_path = str(tmp_path / "rule_config_ml.yaml")
         with open(config_path, "w") as f:
