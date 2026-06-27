@@ -133,6 +133,11 @@ plotting:
   # Matplotlib style sheet.
   style: "seaborn-v0_8-whitegrid"
 
+# ── Fitting ──────────────────────────────────────────────────────────────────
+fitting:
+  fitting_level: "quick"  # "quick" | "standard" | "rigorous"
+  random_seed: 42
+
 # ── API ──────────────────────────────────────────────────────────────────────
 api:
   host: "0.0.0.0"

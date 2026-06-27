@@ -266,16 +266,9 @@ def analyze_light_curve(
         confidence_float = 0.5
         confidence_breakdown = []
 
-    # ── Stage 6: Plotting ─────────────────────────────────────────────────
-    plots = _generate_plots(
-        time=time,
-        flux=flux,
-        time_clean=time_clean,
-        flux_clean=flux_clean,
-        bls_result=bls_result,
-        target_id=target_id,
-        cfg=cfg,
-    )
+    # ── Stage 6: Plotting (Moved after transit fitting) ───────────────────
+    fit_res = None
+    plots = {}
 
     # ── Stage 7: Build explanation string ─────────────────────────────────
     explanation = _build_explanation(
@@ -305,6 +298,53 @@ def analyze_light_curve(
     depth_uncertainty = None
     epoch_btjd = None
     fit_quality = None
+    
+    # Initialize all Phase 7 scientific parameters to None or default
+    fit_status = "SUCCESS" if not candidate_detected else "FAILED"
+    quality_flags = []
+    rp_rstar = None
+    rp_rstar_err_lower = None
+    rp_rstar_err_upper = None
+    a_rstar = None
+    a_rstar_err_lower = None
+    a_rstar_err_upper = None
+    b = None
+    b_err_lower = None
+    b_err_upper = None
+    u1 = None
+    u2 = None
+    baseline_offset = None
+    baseline_slope = None
+    jitter = None
+    chi2 = None
+    reduced_chi2 = None
+    bic = None
+    aic = None
+    residual_rms = None
+    durbin_watson = None
+    beta_factor = None
+    autocorr_lag1 = None
+    mcmc_passed = None
+    mcmc_rhat = None
+    mcmc_ess = None
+    observed_depth = None
+    observed_depth_uncertainty = None
+    corrected_depth = None
+    corrected_depth_uncertainty = None
+    planet_radius_earth = None
+    planet_radius_earth_err_lower = None
+    planet_radius_earth_err_upper = None
+    inferred_density = None
+    inclination_deg = None
+    observed_transits = None
+    in_transit_cadences = None
+    phase_coverage_fraction = None
+    alias_warning_fit = False
+    alias_type_fit = "none"
+    alias_reason_fit = ""
+    odd_even_delta_fit = None
+    secondary_depth_fit = None
+    uncertainty_method = None
 
     if candidate_detected:
         try:
@@ -317,6 +357,7 @@ def analyze_light_curve(
             init_duration = bls_result.best_duration
             init_depth = bls_result.best_depth
 
+            fit_cfg = cfg.get("fitting", {})
             fit_res = fit_transit(
                 time_clean,
                 flux_clean,
@@ -324,10 +365,57 @@ def analyze_light_curve(
                 init_t0=init_t0,
                 init_duration=init_duration,
                 init_depth=init_depth,
+                config=fit_cfg,
+                metadata=metadata,
             )
 
             epoch_btjd = fit_res.get("epoch_btjd")
             fit_quality = fit_res.get("fit_quality")
+            fit_status = fit_res.get("fit_status", "FAILED")
+            quality_flags = fit_res.get("quality_flags", [])
+            rp_rstar = fit_res.get("rp_rstar")
+            rp_rstar_err_lower = fit_res.get("rp_rstar_err_lower")
+            rp_rstar_err_upper = fit_res.get("rp_rstar_err_upper")
+            a_rstar = fit_res.get("a_rstar")
+            a_rstar_err_lower = fit_res.get("a_rstar_err_lower")
+            a_rstar_err_upper = fit_res.get("a_rstar_err_upper")
+            b = fit_res.get("b")
+            b_err_lower = fit_res.get("b_err_lower")
+            b_err_upper = fit_res.get("b_err_upper")
+            u1 = fit_res.get("u1")
+            u2 = fit_res.get("u2")
+            baseline_offset = fit_res.get("baseline")
+            baseline_slope = fit_res.get("slope")
+            jitter = fit_res.get("jitter")
+            chi2 = fit_res.get("chi2")
+            reduced_chi2 = fit_res.get("reduced_chi2")
+            bic = fit_res.get("bic")
+            aic = fit_res.get("aic")
+            residual_rms = fit_res.get("residual_rms")
+            durbin_watson = fit_res.get("durbin_watson")
+            beta_factor = fit_res.get("beta_factor")
+            autocorr_lag1 = fit_res.get("autocorr_lag1")
+            mcmc_passed = fit_res.get("mcmc_passed")
+            mcmc_rhat = fit_res.get("mcmc_rhat")
+            mcmc_ess = fit_res.get("mcmc_ess")
+            observed_depth = fit_res.get("observed_depth")
+            observed_depth_uncertainty = fit_res.get("observed_depth_uncertainty")
+            corrected_depth = fit_res.get("corrected_depth")
+            corrected_depth_uncertainty = fit_res.get("corrected_depth_uncertainty")
+            planet_radius_earth = fit_res.get("planet_radius_earth")
+            planet_radius_earth_err_lower = fit_res.get("planet_radius_earth_err_lower")
+            planet_radius_earth_err_upper = fit_res.get("planet_radius_earth_err_upper")
+            inferred_density = fit_res.get("inferred_density")
+            inclination_deg = fit_res.get("inclination_deg")
+            observed_transits = fit_res.get("observed_transits")
+            in_transit_cadences = fit_res.get("in_transit_cadences")
+            phase_coverage_fraction = fit_res.get("phase_coverage_fraction")
+            alias_warning_fit = fit_res.get("alias_warning", False)
+            alias_type_fit = fit_res.get("alias_type", "none")
+            alias_reason_fit = fit_res.get("alias_reason", "")
+            odd_even_delta_fit = fit_res.get("odd_even_delta")
+            secondary_depth_fit = fit_res.get("secondary_depth")
+            uncertainty_method = fit_res.get("uncertainty_method")
 
             time_span = float(np.max(time_clean) - np.min(time_clean)) if len(time_clean) > 0 else 0.0
             unc = estimate_uncertainties(fit_res, time_span, bls_result.snr)
@@ -357,6 +445,17 @@ def analyze_light_curve(
         class_probabilities[predicted_class] = 1.0
 
     # ── Stage 8: Assemble result dict ─────────────────────────────────────
+    # Generate all plots (enhanced with fitting results)
+    plots = _generate_plots(
+        time=time,
+        flux=flux,
+        time_clean=time_clean,
+        flux_clean=flux_clean,
+        bls_result=bls_result,
+        target_id=target_id,
+        cfg=cfg,
+        fit_result=fit_res,
+    )
     processing_time_ms = (_time.perf_counter() - wall_start) * 1000
 
     result = {
@@ -378,6 +477,54 @@ def analyze_light_curve(
         "depth_uncertainty":         round(depth_uncertainty, 8) if (candidate_detected and depth_uncertainty is not None) else None,
         "epoch_btjd":                round(epoch_btjd, 6) if (candidate_detected and epoch_btjd is not None) else None,
         "fit_quality":                round(fit_quality, 6) if (candidate_detected and fit_quality is not None) else None,
+        
+        # New Phase 7 scientific parameters
+        "fit_status":                fit_status,
+        "quality_flags":             quality_flags,
+        "rp_rstar":                  round(rp_rstar, 6) if rp_rstar is not None else None,
+        "rp_rstar_err_lower":        round(rp_rstar_err_lower, 6) if rp_rstar_err_lower is not None else None,
+        "rp_rstar_err_upper":        round(rp_rstar_err_upper, 6) if rp_rstar_err_upper is not None else None,
+        "a_rstar":                   round(a_rstar, 4) if a_rstar is not None else None,
+        "a_rstar_err_lower":         round(a_rstar_err_lower, 4) if a_rstar_err_lower is not None else None,
+        "a_rstar_err_upper":         round(a_rstar_err_upper, 4) if a_rstar_err_upper is not None else None,
+        "b":                         round(b, 4) if b is not None else None,
+        "b_err_lower":               round(b_err_lower, 4) if b_err_lower is not None else None,
+        "b_err_upper":               round(b_err_upper, 4) if b_err_upper is not None else None,
+        "u1":                        round(u1, 4) if u1 is not None else None,
+        "u2":                        round(u2, 4) if u2 is not None else None,
+        "baseline_offset":           round(baseline_offset, 6) if baseline_offset is not None else None,
+        "baseline_slope":            round(baseline_slope, 8) if baseline_slope is not None else None,
+        "jitter":                    round(jitter, 6) if jitter is not None else None,
+        "chi2":                      round(chi2, 2) if chi2 is not None else None,
+        "reduced_chi2":              round(reduced_chi2, 4) if reduced_chi2 is not None else None,
+        "bic":                       round(bic, 2) if bic is not None else None,
+        "aic":                       round(aic, 2) if aic is not None else None,
+        "residual_rms":              round(residual_rms, 6) if residual_rms is not None else None,
+        "durbin_watson":             round(durbin_watson, 4) if durbin_watson is not None else None,
+        "beta_factor":               round(beta_factor, 4) if beta_factor is not None else None,
+        "autocorr_lag1":             round(autocorr_lag1, 4) if autocorr_lag1 is not None else None,
+        "mcmc_passed":               mcmc_passed,
+        "mcmc_rhat":                 round(mcmc_rhat, 4) if mcmc_rhat is not None else None,
+        "mcmc_ess":                  mcmc_ess,
+        "observed_depth":            round(observed_depth, 6) if observed_depth is not None else None,
+        "observed_depth_uncertainty": round(observed_depth_uncertainty, 6) if observed_depth_uncertainty is not None else None,
+        "corrected_depth":           round(corrected_depth, 6) if corrected_depth is not None else None,
+        "corrected_depth_uncertainty": round(corrected_depth_uncertainty, 6) if corrected_depth_uncertainty is not None else None,
+        "planet_radius_earth":       round(planet_radius_earth, 4) if planet_radius_earth is not None else None,
+        "planet_radius_earth_err_lower": round(planet_radius_earth_err_lower, 4) if planet_radius_earth_err_lower is not None else None,
+        "planet_radius_earth_err_upper": round(planet_radius_earth_err_upper, 4) if planet_radius_earth_err_upper is not None else None,
+        "inferred_density":          round(inferred_density, 4) if inferred_density is not None else None,
+        "inclination_deg":           round(inclination_deg, 4) if inclination_deg is not None else None,
+        "observed_transits":         observed_transits,
+        "in_transit_cadences":       in_transit_cadences,
+        "phase_coverage_fraction":   round(phase_coverage_fraction, 4) if phase_coverage_fraction is not None else None,
+        "alias_warning_fitter":      alias_warning_fit,
+        "alias_type_fitter":         alias_type_fit,
+        "alias_reason_fitter":       alias_reason_fit,
+        "odd_even_delta_fitter":     round(odd_even_delta_fit, 6) if odd_even_delta_fit is not None else None,
+        "secondary_depth_fitter":    round(secondary_depth_fit, 6) if secondary_depth_fit is not None else None,
+        "uncertainty_method":        uncertainty_method,
+        
         # Full feature vector
         "features": {k: round(float(v), 8) for k, v in features.items()},
         # Blend/contamination diagnostics
@@ -420,18 +567,19 @@ def _generate_plots(
     bls_result: Any,
     target_id: str,
     cfg: dict,
+    fit_result: dict | None = None,
 ) -> dict:
     """
-    Generate all four diagnostic plots as base64 PNG strings.
-
-    Returns a dict with all four keys always present. If plotting fails
-    or matplotlib is unavailable, all values are empty strings.
+    Generate diagnostic plots as base64 PNG strings.
     """
     empty_plots = {
         "raw_lightcurve": "",
         "cleaned_lightcurve": "",
         "periodogram": "",
         "phase_folded": "",
+        "transit_stack": "",
+        "posterior_corner": "",
+        "alias_comparison": "",
     }
 
     try:
@@ -445,6 +593,7 @@ def _generate_plots(
             bls_result=bls_result,
             target_id=target_id,
             config=plot_cfg,
+            fit_result=fit_result,
         )
     except ImportError:
         logger.info("pipeline: matplotlib not available — skipping plots")
@@ -643,7 +792,18 @@ def _check_invariants(result: dict) -> None:
     nullable = [
         "period_days", "duration_days", "depth", "snr", "transit_count",
         "bootstrap_fap", "period_uncertainty_days", "duration_uncertainty_days",
-        "depth_uncertainty", "epoch_btjd", "fit_quality"
+        "depth_uncertainty", "epoch_btjd", "fit_quality",
+        "rp_rstar", "rp_rstar_err_lower", "rp_rstar_err_upper",
+        "a_rstar", "a_rstar_err_lower", "a_rstar_err_upper",
+        "b", "b_err_lower", "b_err_upper", "u1", "u2",
+        "baseline_offset", "baseline_slope", "jitter", "chi2", "reduced_chi2",
+        "bic", "aic", "residual_rms", "durbin_watson", "beta_factor", "autocorr_lag1",
+        "mcmc_passed", "mcmc_rhat", "mcmc_ess", "observed_depth", "observed_depth_uncertainty",
+        "corrected_depth", "corrected_depth_uncertainty", "planet_radius_earth",
+        "planet_radius_earth_err_lower", "planet_radius_earth_err_upper",
+        "inferred_density", "inclination_deg", "observed_transits", "in_transit_cadences",
+        "phase_coverage_fraction", "odd_even_delta_fitter", "secondary_depth_fitter",
+        "uncertainty_method"
     ]
     if not detected:
         for key in nullable:
@@ -655,7 +815,7 @@ def _check_invariants(result: dict) -> None:
                 result[key] = None
     else:
         for key in nullable:
-            if result[key] is None:
+            if result[key] is None and key not in ("planet_radius_earth", "planet_radius_earth_err_lower", "planet_radius_earth_err_upper"):
                 logger.warning(
                     "invariant violation: candidate_detected=True but %s is None",
                     key,

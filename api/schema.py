@@ -120,6 +120,53 @@ class AnalyzeResponse(BaseModel):
     epoch_btjd: Optional[float] = None
     fit_quality: Optional[float] = None
 
+    # New Phase 7 scientific parameters
+    fit_status: Optional[str] = None
+    quality_flags: Optional[list[str]] = None
+    rp_rstar: Optional[float] = None
+    rp_rstar_err_lower: Optional[float] = None
+    rp_rstar_err_upper: Optional[float] = None
+    a_rstar: Optional[float] = None
+    a_rstar_err_lower: Optional[float] = None
+    a_rstar_err_upper: Optional[float] = None
+    b: Optional[float] = None
+    b_err_lower: Optional[float] = None
+    b_err_upper: Optional[float] = None
+    u1: Optional[float] = None
+    u2: Optional[float] = None
+    baseline_offset: Optional[float] = None
+    baseline_slope: Optional[float] = None
+    jitter: Optional[float] = None
+    chi2: Optional[float] = None
+    reduced_chi2: Optional[float] = None
+    bic: Optional[float] = None
+    aic: Optional[float] = None
+    residual_rms: Optional[float] = None
+    durbin_watson: Optional[float] = None
+    beta_factor: Optional[float] = None
+    autocorr_lag1: Optional[float] = None
+    mcmc_passed: Optional[bool] = None
+    mcmc_rhat: Optional[float] = None
+    mcmc_ess: Optional[int] = None
+    observed_depth: Optional[float] = None
+    observed_depth_uncertainty: Optional[float] = None
+    corrected_depth: Optional[float] = None
+    corrected_depth_uncertainty: Optional[float] = None
+    planet_radius_earth: Optional[float] = None
+    planet_radius_earth_err_lower: Optional[float] = None
+    planet_radius_earth_err_upper: Optional[float] = None
+    inferred_density: Optional[float] = None
+    inclination_deg: Optional[float] = None
+    observed_transits: Optional[int] = None
+    in_transit_cadences: Optional[int] = None
+    phase_coverage_fraction: Optional[float] = None
+    alias_warning_fitter: Optional[bool] = None
+    alias_type_fitter: Optional[str] = None
+    alias_reason_fitter: Optional[str] = None
+    odd_even_delta_fitter: Optional[float] = None
+    secondary_depth_fitter: Optional[float] = None
+    uncertainty_method: Optional[str] = None
+
     features: FeaturesSchema = Field(default_factory=FeaturesSchema)
     explanation: str = ""
     plots: PlotsSchema = Field(default_factory=PlotsSchema)

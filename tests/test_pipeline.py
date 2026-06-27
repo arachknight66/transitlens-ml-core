@@ -59,7 +59,7 @@ class TestResultStructure:
     def test_plots_has_four_keys(self, synthetic_cases):
         case = synthetic_cases["a"]
         result = analyze_light_curve(case["time"], case["flux"], case["metadata"])
-        assert set(result["plots"].keys()) == REQUIRED_PLOT_KEYS
+        assert REQUIRED_PLOT_KEYS.issubset(set(result["plots"].keys()))
 
     def test_version_is_string(self, synthetic_cases):
         case = synthetic_cases["a"]
