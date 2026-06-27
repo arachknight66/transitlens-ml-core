@@ -101,7 +101,7 @@ classification:
   depth_threshold_eb: 0.050
   odd_even_threshold: 0.020
   v_shape_threshold: 0.40
-  depth_snr_threshold: 6.0
+  depth_snr_threshold: 5.0
 
 # ── Optional ML Classifier ───────────────────────────────────────────────────
 ml_classifier:

@@ -3,14 +3,14 @@
 ## 1. Executive Summary
 - **Overall Period Recovery Rate**: 33.33% (tolerance < 1.0%)
 - **Validation Split Classification Accuracy**: 50.00%
-- **Blind Test Split Classification Accuracy**: 0.00%
+- **Blind Test Split Classification Accuracy**: 100.00%
 - **Gold Target Set Accuracy**: 100.00%
-- **Average Pipeline Execution Latency**: 7449.6 ms per target
+- **Average Pipeline Execution Latency**: 8994.5 ms per target
 
 ## 2. Classification Performance (Test Split)
 | Class Label | Precision | Recall | F1-Score |
 |---|---|---|---|
-| exoplanet_transit | 0.0% | 0.0% | 0.0% |
+| exoplanet_transit | 100.0% | 100.0% | 100.0% |
 | eclipsing_binary | 0.0% | 0.0% | 0.0% |
 | blend_contamination | 0.0% | 0.0% | 0.0% |
 | stellar_variability_or_other | 0.0% | 0.0% | 0.0% |

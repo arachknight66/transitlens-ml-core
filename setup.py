@@ -25,4 +25,9 @@ setup(
     author="Team TransitLens",
     description="AI-enabled detection and classification of exoplanet transit signals from astronomical light curves",
     python_requires=">=3.10",
+    entry_points={
+        "console_scripts": [
+            "transitlens=core.cli:main",
+        ]
+    },
 )

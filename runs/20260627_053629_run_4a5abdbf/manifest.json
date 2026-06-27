@@ -1,0 +1,60 @@
+{
+  "run_id": "20260627_053629_run_4a5abdbf",
+  "status": "COMPLETED",
+  "start_time": "2026-06-27T05:36:29.367441+00:00",
+  "end_time": "2026-06-27T05:36:36.371022+00:00",
+  "python_version": "3.14.6 (tags/v3.14.6:c63aec6, Jun 10 2026, 10:26:10) [MSC v.1944 64 bit (AMD64)]",
+  "os_platform": "Windows-11-10.0.26200-SP0",
+  "artifacts": [
+    {
+      "target_id": "candidate_a",
+      "stage": "classify",
+      "relative_path": "predictions/candidate_a_result.json",
+      "schema_name": "ClassificationResult",
+      "schema_version": "0.1.0",
+      "hash": "a3c19c2c114b8ec6c78a881b122c0185ddbd30e758886437e5df0ad577f5fad8",
+      "size_bytes": 4430,
+      "created_at": "2026-06-27T05:36:36.316650+00:00"
+    },
+    {
+      "target_id": "candidate_a",
+      "stage": "plot",
+      "relative_path": "plots/candidate_a_raw_lightcurve.png",
+      "schema_name": "DiagnosticPlot",
+      "schema_version": "0.1.0",
+      "hash": "d4ff7526da40e0e76a0fbe846dea23dacf7283d53100c6aa69858b2e429c663b",
+      "size_bytes": 65784,
+      "created_at": "2026-06-27T05:36:36.329547+00:00"
+    },
+    {
+      "target_id": "candidate_a",
+      "stage": "plot",
+      "relative_path": "plots/candidate_a_cleaned_lightcurve.png",
+      "schema_name": "DiagnosticPlot",
+      "schema_version": "0.1.0",
+      "hash": "1e26a123dc2686dc686339228a4c0a1e7560fc4881e5de2ff8d81fdea490849f",
+      "size_bytes": 46994,
+      "created_at": "2026-06-27T05:36:36.341163+00:00"
+    },
+    {
+      "target_id": "candidate_a",
+      "stage": "plot",
+      "relative_path": "plots/candidate_a_periodogram.png",
+      "schema_name": "DiagnosticPlot",
+      "schema_version": "0.1.0",
+      "hash": "74f2b4fcf5c501e1e6c12bb899f1c24bade65c6b09b0d1c24da6f6274374c6a3",
+      "size_bytes": 35862,
+      "created_at": "2026-06-27T05:36:36.355944+00:00"
+    },
+    {
+      "target_id": "candidate_a",
+      "stage": "plot",
+      "relative_path": "plots/candidate_a_phase_folded.png",
+      "schema_name": "DiagnosticPlot",
+      "schema_version": "0.1.0",
+      "hash": "7f0dd3befd4d7a5e3356e63e97d443ca2d9c93965f9dadddc2b3bcf59dfe20e2",
+      "size_bytes": 214259,
+      "created_at": "2026-06-27T05:36:36.369687+00:00"
+    }
+  ]
+}

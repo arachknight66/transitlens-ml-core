@@ -28,19 +28,19 @@
       }
     },
     "period_recovery_rate": 0.0,
-    "average_runtime_ms": 7449.632700008806,
-    "total_runtime_s": 14.899265400017612,
+    "average_runtime_ms": 8994.479200002388,
+    "total_runtime_s": 17.988958400004776,
     "mean_period_error_pct": 80.54918902914264,
     "mean_depth_error_pct": 33.29515576323987,
     "mean_duration_error_pct": 20.56068483327356
   },
   "test_metrics": {
-    "accuracy": 0.0,
+    "accuracy": 1.0,
     "per_class": {
       "exoplanet_transit": {
-        "precision": 0.0,
-        "recall": 0.0,
-        "f1": 0.0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0,
         "support": 1
       },
       "eclipsing_binary": {
@@ -63,8 +63,8 @@
       }
     },
     "period_recovery_rate": 1.0,
-    "average_runtime_ms": 1880.5417999974452,
-    "total_runtime_s": 1.8805417999974452,
+    "average_runtime_ms": 4377.081799990265,
+    "total_runtime_s": 4.377081799990265,
     "mean_period_error_pct": 0.003479532163748605,
     "mean_depth_error_pct": 2.7769230769230786,
     "mean_duration_error_pct": 30.0

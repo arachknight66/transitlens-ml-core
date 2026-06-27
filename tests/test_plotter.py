@@ -92,30 +92,31 @@ def lc_data():
 class TestGenerateAll:
     """Tests for the generate_all() public function."""
 
-    def test_returns_all_four_keys(self, lc_data, sample_bls_detected):
+    def test_returns_all_seven_keys(self, lc_data, sample_bls_detected):
         time, flux = lc_data
         plots = generate_all(time, flux, time, flux, sample_bls_detected, "test")
         assert set(plots.keys()) == {
-            "raw_lightcurve", "cleaned_lightcurve", "periodogram", "phase_folded"
+            "raw_lightcurve", "cleaned_lightcurve", "periodogram", "phase_folded",
+            "transit_stack", "posterior_corner", "alias_comparison"
         }
 
     def test_all_plots_non_empty_for_detected(self, lc_data, sample_bls_detected):
         time, flux = lc_data
         plots = generate_all(time, flux, time, flux, sample_bls_detected, "test")
-        for key, val in plots.items():
-            assert len(val) > 0, f"Plot '{key}' is empty"
+        for key in ["raw_lightcurve", "cleaned_lightcurve", "periodogram", "phase_folded"]:
+            assert len(plots[key]) > 0, f"Plot '{key}' is empty"
 
     def test_all_plots_non_empty_for_noise(self, lc_data, sample_bls_noise):
         time, flux = lc_data
         plots = generate_all(time, flux, time, flux, sample_bls_noise, "test")
-        for key, val in plots.items():
-            assert len(val) > 0, f"Plot '{key}' is empty"
+        for key in ["raw_lightcurve", "cleaned_lightcurve", "periodogram", "phase_folded"]:
+            assert len(plots[key]) > 0, f"Plot '{key}' is empty"
 
     def test_base64_decodes_to_png(self, lc_data, sample_bls_detected):
         time, flux = lc_data
         plots = generate_all(time, flux, time, flux, sample_bls_detected, "test")
-        for key, val in plots.items():
-            decoded = base64.b64decode(val)
+        for key in ["raw_lightcurve", "cleaned_lightcurve", "periodogram", "phase_folded"]:
+            decoded = base64.b64decode(plots[key])
             # PNG magic bytes
             assert decoded[:4] == b"\x89PNG", f"Plot '{key}' is not valid PNG"
 
@@ -123,7 +124,7 @@ class TestGenerateAll:
         time, flux = lc_data
         cfg = {"dpi": 50, "figure_width": 6, "figure_height": 3}
         plots = generate_all(time, flux, time, flux, sample_bls_detected, "test", config=cfg)
-        assert all(len(v) > 0 for v in plots.values())
+        assert all(len(plots[k]) > 0 for k in ["raw_lightcurve", "cleaned_lightcurve", "periodogram", "phase_folded"])
 
 
 # ---------------------------------------------------------------------------
@@ -158,7 +159,7 @@ class TestIndividualPlots:
             snr=0.5, periods=np.array([]), power=np.array([]),
             alias_warning=False, backend="test", detection_reason="no data",
         )
-        result = _plot_phase_folded(time, flux, bls, "test", DEFAULT_CONFIG)
+        result = _plot_phase_folded(time, flux, bls, None, "test", DEFAULT_CONFIG)
         assert len(result) > 100
 
 

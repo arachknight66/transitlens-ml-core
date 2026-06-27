@@ -256,7 +256,7 @@ def extract(
         oot_flux = flux[out_transit_mask]
         features["local_noise"] = float(np.std(oot_flux - 1.0, ddof=1))
         if features["local_noise"] <= 0:
-            features["local_noise"] = float(np.std(flux, ddof=1))
+            features["local_noise"] = 1e-5
             reliable["local_noise"] = False
     else:
         features["local_noise"] = float(np.std(flux, ddof=1))
