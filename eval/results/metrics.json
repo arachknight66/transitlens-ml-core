@@ -28,8 +28,8 @@
       }
     },
     "period_recovery_rate": 0.0,
-    "average_runtime_ms": 8994.479200002388,
-    "total_runtime_s": 17.988958400004776,
+    "average_runtime_ms": 12300.086300005205,
+    "total_runtime_s": 24.60017260001041,
     "mean_period_error_pct": 80.54918902914264,
     "mean_depth_error_pct": 33.29515576323987,
     "mean_duration_error_pct": 20.56068483327356
@@ -63,8 +63,8 @@
       }
     },
     "period_recovery_rate": 1.0,
-    "average_runtime_ms": 4377.081799990265,
-    "total_runtime_s": 4.377081799990265,
+    "average_runtime_ms": 6626.506500004325,
+    "total_runtime_s": 6.626506500004325,
     "mean_period_error_pct": 0.003479532163748605,
     "mean_depth_error_pct": 2.7769230769230786,
     "mean_duration_error_pct": 30.0

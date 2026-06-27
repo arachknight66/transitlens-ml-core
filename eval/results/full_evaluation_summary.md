@@ -5,7 +5,7 @@
 - **Validation Split Classification Accuracy**: 50.00%
 - **Blind Test Split Classification Accuracy**: 100.00%
 - **Gold Target Set Accuracy**: 100.00%
-- **Average Pipeline Execution Latency**: 8994.5 ms per target
+- **Average Pipeline Execution Latency**: 12300.1 ms per target
 
 ## 2. Classification Performance (Test Split)
 | Class Label | Precision | Recall | F1-Score |

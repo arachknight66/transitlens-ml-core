@@ -296,7 +296,7 @@ def cmd_reproduce(args):
     results_dir = Path(__file__).parent.parent / "eval" / "results"
     PHASE8_ARTIFACTS.mkdir(parents=True, exist_ok=True)
     
-    for f in ["metrics.json", "full_evaluation_summary.md", "parameter_error_summary.csv"]:
+    for f in ["metrics.json", "full_evaluation_summary.md", "parameter_error_summary.csv", "PHASE8_REPORT.md", "PHASE8_AUDIT.md"]:
         src = results_dir / f
         if src.exists():
             shutil.copy(src, PHASE8_ARTIFACTS / f)
