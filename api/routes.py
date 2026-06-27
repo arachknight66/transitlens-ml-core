@@ -166,6 +166,7 @@ async def analyze_tess(
     tic_id: str = Form(...),
     sector: int | None = Form(None),
     metadata: str = Form("{}"),
+    pipeline_config: str = Form("{}", alias="config"),
 ) -> dict:
     """
     Accepts a TIC ID, retrieves the time/flux series via the data-pipeline,
@@ -175,8 +176,22 @@ async def analyze_tess(
         parsed_metadata = json.loads(metadata)
     except json.JSONDecodeError:
         raise HTTPException(status_code=422, detail="metadata must be a valid JSON string")
-        
-    parsed_metadata["target_id"] = f"TIC {tic_id}"
+
+    try:
+        parsed_config = json.loads(pipeline_config)
+    except json.JSONDecodeError:
+        raise HTTPException(status_code=422, detail="config must be a valid JSON string")
+    if not isinstance(parsed_config, dict):
+        raise HTTPException(status_code=422, detail="config must be a JSON object")
+
+    clean_id = tic_id.upper().replace("TIC", "").replace("-", "")
+    clean_id = "".join(clean_id.split())
+    if not clean_id.isdigit():
+        raise HTTPException(status_code=422, detail="tic_id must contain a numeric TIC identifier")
+    if sector is not None and sector <= 0:
+        raise HTTPException(status_code=422, detail="sector must be a positive integer")
+
+    parsed_metadata["target_id"] = f"TIC {clean_id}"
     
     import sys
     from pathlib import Path
@@ -187,14 +202,14 @@ async def analyze_tess(
         
     from interface import load_light_curve  # type: ignore
     try:
-        config = {}
+        data_config = {}
         if sector is not None:
-            config["sector"] = sector
+            data_config["sector"] = sector
             
         lc_data = load_light_curve(
             source="tess",
-            target_id=tic_id,
-            config=config
+            target_id=clean_id,
+            config=data_config
         )
     except Exception as e:
         raise HTTPException(status_code=422, detail=f"Failed to fetch TESS data: {str(e)}")
@@ -208,6 +223,7 @@ async def analyze_tess(
             time=lc_data["time"],
             flux=lc_data["flux"],
             metadata=parsed_metadata,
+            config=parsed_config,
         )
     except InvalidInputError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc

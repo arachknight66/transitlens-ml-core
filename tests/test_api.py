@@ -18,6 +18,7 @@ Covers:
 from __future__ import annotations
 
 import os
+from pathlib import Path
 import pytest
 import numpy as np
 
@@ -171,8 +172,15 @@ class TestAnalyzeFileAndTess:
     """Tests for POST /analyze/file and POST /analyze/tess."""
 
     def test_analyze_file_returns_200(self):
-        fits_path = r"C:\Users\arach\Documents\Projects\Transitlens\transitlens-data-pipeline\real_tess\cache\TIC261136679_sector095.fits"
-        assert os.path.exists(fits_path)
+        fits_path = (
+            Path(__file__).resolve().parents[2]
+            / "transitlens-data-pipeline"
+            / "real_tess"
+            / "cache"
+            / "TIC261136679_sector095.fits"
+        )
+        if not fits_path.exists():
+            pytest.skip("cached TESS integration fixture is not available")
         with open(fits_path, "rb") as f:
             response = client.post(
                 "/analyze/file",
@@ -193,3 +201,17 @@ class TestAnalyzeFileAndTess:
         data = response.json()
         assert data["target_id"] == "TIC 261136679"
         assert "predicted_class" in data
+
+    def test_analyze_tess_rejects_non_numeric_tic(self):
+        response = client.post(
+            "/analyze/tess",
+            data={"tic_id": "TIC-not-a-number"}
+        )
+        assert response.status_code == 422
+
+    def test_analyze_tess_rejects_invalid_config_json(self):
+        response = client.post(
+            "/analyze/tess",
+            data={"tic_id": "261136679", "config": "not-json"}
+        )
+        assert response.status_code == 422

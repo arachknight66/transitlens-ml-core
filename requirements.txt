@@ -4,6 +4,7 @@
 # Core scientific computing
 numpy>=1.24
 scipy>=1.11
+pandas>=2.0
 
 # BLS implementation (primary)
 astropy>=5.3
@@ -22,6 +23,11 @@ pydantic>=2.5
 
 # Config file parsing
 pyyaml>=6.0
+
+# TESS retrieval by TIC ID and multipart API forms
+lightkurve>=2.4
+astroquery>=0.4.6
+python-multipart>=0.0.9
 
 # Testing
 pytest>=7.4
