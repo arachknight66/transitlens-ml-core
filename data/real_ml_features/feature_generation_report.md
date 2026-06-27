@@ -1,21 +1,21 @@
 # Feature Generation Report
-Generated on: 2026-06-27 18:19:13
+Generated on: 2026-06-27 19:23:08
 
 ## Summary
 
-| Split | Total Targets | Success | Failed | Exoplanet Transit | Eclipsing Binary | Blend Contam | Stellar Var/Other |
-| :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
-| train | 4 | 3 | 1 | 3 | 0 | 0 | 0 |
-| val | 1 | 1 | 0 | 0 | 0 | 0 | 1 |
-| test | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| Split | Total Targets | Success Features | Failed | Suspicious | Exoplanet Transit | Stellar Var/Other |
+| :--- | :--- | :--- | :--- | :--- | :--- | :--- |
+| train | 41 | 7 | 1 | 33 | 4 | 3 |
+| val | 14 | 6 | 0 | 8 | 4 | 2 |
+| test | 10 | 2 | 0 | 8 | 0 | 2 |
 
 ## Configuration
 - Real-only mode: True
 - Resume: False
+- Include Suspicious: False
 - Feature count: 16 features
 
-## Excluded / Included Features
-The feature matrix retains metadata columns for downstream evaluation, but ML models MUST only use the following feature columns for training and evaluation:
+## Checked Features List
 
 - `bls_power`
 - `snr`

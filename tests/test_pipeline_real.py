@@ -1,14 +1,15 @@
 import os
-import tempfile
-import yaml
+import sys
+import json
+import pickle
 import pytest
+import yaml
 import numpy as np
 import pandas as pd
 from pathlib import Path
 from astropy.io import fits
 
-# Add project paths
-import sys
+# Add project paths to system path
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(REPO_ROOT / "transitlens-data-pipeline"))
 sys.path.insert(0, str(REPO_ROOT / "transitlens-ml-core"))
@@ -17,6 +18,7 @@ from datasets.build_tess_training_manifest import normalize_tic_id
 from real_tess.tesscut_downloader import validate_fits
 from datasets.process_tesscut_lightcurves import perform_aperture_photometry
 from core.feature_extractor import FEATURE_NAMES
+from core.classifier import TransitLensClassifier, classify, ClassificationError
 
 def test_comment_csv_parsing(tmp_path):
     """Test that CSV files with NASA comment headers are correctly parsed."""
@@ -104,7 +106,6 @@ mappings:
     df = pd.read_parquet(manifest_parquet)
     assert len(df) > 0
     
-    # Check split sets
     train_tics = set(df[df["split"] == "train"]["tic_id"])
     val_tics = set(df[df["split"] == "val"]["tic_id"])
     test_tics = set(df[df["split"] == "test"]["tic_id"])
@@ -124,18 +125,13 @@ def test_corrupt_fits_rejected(tmp_path):
 
 def test_aperture_fallback(tmp_path):
     """Test that performing aperture photometry falls back to 3x3 window when threshold is empty."""
-    # Write a mock FITS target pixel file
     primary_hdu = fits.PrimaryHDU()
     primary_hdu.header["OBJECT"] = "TIC 50365310"
     primary_hdu.header["SECTOR"] = 78
     
-    # Binary table extension
     time_col = fits.Column(name="TIME", format="D", array=np.linspace(0.0, 10.0, 150))
-    # Make standard deviation high but keep center pixels moderately high (but below threshold)
-    # to test fallback while retaining positive background-subtracted flux.
     flux_array = np.ones((150, 15, 15)) * 1.0
     flux_array[:, 0, 0] = 1000.0  # Make standard deviation high
-    # Set center 3x3 window to 5.0 (brighter than background median 1.0)
     flux_array[:, 6:9, 6:9] = 5.0
     
     flux_col = fits.Column(name="FLUX", format="225E", dim="(15,15)", array=flux_array)
@@ -150,7 +146,7 @@ def test_aperture_fallback(tmp_path):
     fits_path = tmp_path / "mock_tpf.fits"
     hdul.writeto(fits_path, overwrite=True)
     
-    res = perform_aperture_photometry(fits_path, target_id="TIC-50365310")
+    res = perform_aperture_photometry(fits_path, cutout_size=15)
     assert res["metadata"]["is_fallback"] == True
     assert len(res["time"]) == 150
     assert len(res["flux"]) == 150
@@ -158,7 +154,46 @@ def test_aperture_fallback(tmp_path):
 
 def test_feature_order_matches_inference():
     """Verify that FEATURE_NAMES has the correct dimensions and order matches classifier expectations."""
-    # Read classifier final feature order template
     assert len(FEATURE_NAMES) == 16
     assert FEATURE_NAMES[0] == "bls_power"
     assert FEATURE_NAMES[-1] == "gaia_neighbor_count"
+
+def test_inference_final_feature_order_validation(tmp_path):
+    """Test that classifier raises ClassificationError when feature order mismatches or is missing."""
+    models_dir = tmp_path / "models"
+    models_dir.mkdir()
+    
+    # Save a fake final_classifier.pkl
+    from sklearn.ensemble import RandomForestClassifier
+    from sklearn.preprocessing import StandardScaler
+    scaler = StandardScaler()
+    scaler.fit(np.zeros((10, 16)))
+    clf = RandomForestClassifier()
+    clf.fit(np.zeros((10, 16)), ["exoplanet_transit"] * 5 + ["stellar_variability_or_other"] * 5)
+    
+    wrapper = TransitLensClassifier(model=clf, scaler=scaler, classes=["exoplanet_transit", "stellar_variability_or_other"])
+    with open(models_dir / "final_classifier.pkl", "wb") as f:
+        pickle.dump(wrapper, f)
+        
+    # Write a mismatched feature order file
+    with open(models_dir / "final_feature_order.json", "w") as f:
+        json.dump(["mismatched_feature_name"], f)
+        
+    # Test classifier mock config
+    rule_config = {
+        "detection": {"bls_power_threshold": 0.15, "snr_threshold": 5.0},
+        "classification": {"depth_threshold_eb": 0.050},
+        "confidence": {},
+        "ml_classifier": {"enabled": True, "dev_fallback": False, "model_path": str(models_dir / "final_classifier.pkl")}
+    }
+    config_path = models_dir / "rule_config.yaml"
+    with open(config_path, "w") as f:
+        yaml.dump(rule_config, f)
+        
+    # Try classifying — should fail on feature schema validation
+    mock_features = {k: 0.1 for k in FEATURE_NAMES}
+    mock_features["snr"] = 10.0
+    mock_features["bls_power"] = 0.8
+    with pytest.raises(ClassificationError) as excinfo:
+        classify(mock_features, rule_config_path=str(config_path))
+    assert "Feature schema mismatch" in str(excinfo.value)

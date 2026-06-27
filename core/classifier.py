@@ -513,7 +513,6 @@ def _run_ml_classifier(
     """
     Run the ML classifier on the feature vector.
     Loads final_classifier.pkl (which contains the TransitLensClassifier wrapper)
-    or falls back to old individual pickle files if it doesn't exist.
     """
     from core.feature_extractor import FEATURE_NAMES
 
@@ -527,8 +526,20 @@ def _run_ml_classifier(
     else:
         models_dir = _DEFAULT_RULE_CONFIG_PATH.parent
 
-    # Validate feature order against FEATURE_NAMES if feature_order.json exists
-    feature_order_file = models_dir / "feature_order.json"
+    # Determine model file to load
+    if model_path_str:
+        model_file = Path(model_path_str)
+        if not model_file.is_absolute():
+            model_file = models_dir / model_file
+    else:
+        model_file = models_dir / "final_classifier.pkl"
+
+    # Validate feature order against final_feature_order.json
+    feature_order_file = models_dir / "final_feature_order.json"
+    if not feature_order_file.exists() and not model_file.exists():
+        # Fallback to legacy file order if old model is used
+        feature_order_file = models_dir / "feature_order.json"
+        
     if feature_order_file.exists():
         with open(feature_order_file, "r") as f:
             saved_features = json.load(f)
@@ -537,17 +548,32 @@ def _run_ml_classifier(
                 f"Feature schema mismatch. Models trained with: {saved_features}, "
                 f"but code expects: {list(FEATURE_NAMES)}"
             )
-
-    # Determine model file to load
-    if model_path_str:
-        model_file = Path(model_path_str)
-
-        if not model_file.is_absolute():
-            model_file = models_dir / model_file
     else:
-        model_file = models_dir / "final_classifier.pkl"
+        if model_file.exists():
+            raise ClassificationError(
+                f"final_feature_order.json missing for the trained final_classifier.pkl model in {models_dir}!"
+            )
 
-    # If final_classifier.pkl doesn't exist, we fall back to loading separate rf/xgb files
+    # Validate production_eligible flag in training_metadata.json
+    metadata_file = models_dir / "training_metadata.json"
+    if metadata_file.exists():
+        try:
+            with open(metadata_file, "r") as f:
+                meta = json.load(f)
+            if not meta.get("production_eligible", False):
+                # Only raise error if we are running in strict production mode
+                # i.e., enabled=True in rule_config and dev_fallback=False
+                dev_fallback = ml_cfg.get("dev_fallback", False)
+                if not dev_fallback:
+                    raise ClassificationError(
+                        f"Model at {model_file} is not marked as production eligible in training_metadata.json!"
+                    )
+        except ClassificationError:
+            raise
+        except Exception as e:
+            logger.warning(f"Could not validate metadata: {e}")
+
+    # Fallback to old model files if final_classifier.pkl doesn't exist
     if not model_file.exists() and not model_path_str:
         old_model_file = models_dir / f"{'rf' if model_type == 'rf' else 'xgb'}_model.pkl"
         scaler_file   = models_dir / "feature_scaler.pkl"
@@ -561,14 +587,16 @@ def _run_ml_classifier(
         with open(scaler_file, "rb") as f:
             scaler = pickle.load(f)
             
-        # Build feature array in canonical order
+        # Verify dimension matches
+        if hasattr(scaler, "n_features_in_") and scaler.n_features_in_ != len(FEATURE_NAMES):
+            raise ClassificationError(f"Scaler feature count mismatch: expected {len(FEATURE_NAMES)}, got {scaler.n_features_in_}")
+            
         feature_vec = np.array([features.get(k, 0.0) for k in FEATURE_NAMES]).reshape(1, -1)
         scaled = scaler.transform(feature_vec)
         
         probas = model.predict_proba(scaled)[0]
         model_classes = list(model.classes_)
         class_probabilities = {str(cls): float(prob) for cls, prob in zip(model_classes, probas)}
-        # Fill in any missing classes from CLASSES
         for cls in CLASSES:
             if cls not in class_probabilities:
                 class_probabilities[cls] = 0.0
@@ -582,9 +610,13 @@ def _run_ml_classifier(
     with open(model_file, "rb") as f:
         wrapper = pickle.load(f)
         
+    # Verify dimensions and class schema consistency
+    if hasattr(wrapper, "scaler") and hasattr(wrapper.scaler, "n_features_in_"):
+        if wrapper.scaler.n_features_in_ != len(FEATURE_NAMES):
+            raise ClassificationError(f"Trained model scaler expects {wrapper.scaler.n_features_in_} features, but code has {len(FEATURE_NAMES)} features.")
+            
     feature_vec = np.array([features.get(k, 0.0) for k in FEATURE_NAMES]).reshape(1, -1)
     
-    # Use wrapper methods
     predicted_class = wrapper.predict(feature_vec, calibrated=calibrated)
     class_probabilities = wrapper.predict_proba(feature_vec, calibrated=calibrated)
     

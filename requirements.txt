@@ -32,3 +32,8 @@ python-multipart>=0.0.9
 # Testing
 pytest>=7.4
 httpx>=0.25
+
+# manifest parquet format and joblib/concurrency/retries support
+pyarrow
+joblib
+tenacity

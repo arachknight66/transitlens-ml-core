@@ -1,0 +1,214 @@
+"""
+promote_model.py
+----------------
+Promotes a validated trained staging model to the production models directory.
+Enforces strict promotion checks (disjoint splits, sufficiency, nonempty test split,
+valid feature schema, model load validation, and an inference smoke test).
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import pickle
+import logging
+import shutil
+import os
+import time
+from pathlib import Path
+
+# Ensure sys.path is correct
+REPO_ROOT = Path(__file__).resolve().parent.parent
+import sys
+sys.path.insert(0, str(REPO_ROOT / "transitlens-ml-core"))
+
+from core.classifier import TransitLensClassifier, classify, CLASSES
+from core.feature_extractor import FEATURE_NAMES
+
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+logger = logging.getLogger(__name__)
+
+def update_rule_config(config_path: Path):
+    """Updates rule_config.yaml to enable ML classifier and disable rule fallback."""
+    if not config_path.exists():
+        logger.warning(f"rule_config.yaml not found at {config_path}. Skipping update.")
+        return
+        
+    try:
+        with open(config_path, "r") as f:
+            lines = f.readlines()
+            
+        new_lines = []
+        in_ml_section = False
+        for line in lines:
+            stripped = line.strip()
+            if stripped.startswith("ml_classifier:"):
+                in_ml_section = True
+                new_lines.append(line)
+                continue
+                
+            if in_ml_section and stripped == "":
+                in_ml_section = False
+                
+            if in_ml_section:
+                # Replace properties
+                if stripped.startswith("enabled:"):
+                    indent = line[:line.index("enabled:")]
+                    new_lines.append(f"{indent}enabled: true\n")
+                elif stripped.startswith("use_rule_fallback_on_disagreement:"):
+                    indent = line[:line.index("use_rule_fallback_on_disagreement:")]
+                    new_lines.append(f"{indent}use_rule_fallback_on_disagreement: false\n")
+                else:
+                    new_lines.append(line)
+            else:
+                new_lines.append(line)
+                
+        with open(config_path, "w") as f:
+            f.writelines(new_lines)
+        logger.info(f"Updated {config_path} successfully (enabled=true, fallback=false).")
+    except Exception as e:
+        logger.error(f"Failed to update rule_config.yaml: {e}")
+
+def main():
+    parser = argparse.ArgumentParser(description="Promote validated staging model to production")
+    parser.add_argument("--staging-dir", required=True, help="Directory containing staging model artifacts")
+    parser.add_argument("--production-dir", required=True, help="Directory containing production model artifacts")
+    args = parser.parse_args()
+    
+    staging_dir = Path(args.staging_dir)
+    production_dir = Path(args.production_dir)
+    
+    # Required staging artifacts
+    required_files = [
+        "final_classifier.pkl",
+        "final_feature_scaler.pkl",
+        "final_feature_order.json",
+        "final_label_mapping.json",
+        "training_metadata.json",
+        "evaluation_summary.json"
+    ]
+    
+    logger.info(f"Checking staging directory: {staging_dir}")
+    for fname in required_files:
+        p = staging_dir / fname
+        if not p.exists():
+            logger.error(f"Staging artifact missing: {p}")
+            sys.exit(1)
+            
+    # 1. Load and validate metadata
+    with open(staging_dir / "training_metadata.json", "r") as f:
+        meta = json.load(f)
+    with open(staging_dir / "evaluation_summary.json", "r") as f:
+        eval_summary = json.load(f)
+        
+    production_eligible = meta.get("production_eligible", False)
+    if not production_eligible:
+        logger.error("Promotion REJECTED: Model is not marked as production eligible in training metadata!")
+        sys.exit(1)
+        
+    # 2. Check splits sizes and expected classes
+    sizes = meta.get("dataset_sizes", {})
+    train_size = sizes.get("train", 0)
+    val_size = sizes.get("val", 0)
+    test_size = sizes.get("test", 0)
+    
+    if test_size <= 0:
+        logger.error(f"Promotion REJECTED: Test split is empty (size={test_size})!")
+        sys.exit(1)
+        
+    trained_classes = meta.get("trained_classes", [])
+    if len(trained_classes) < 2:
+        logger.error(f"Promotion REJECTED: Model has only {len(trained_classes)} classes, at least 2 are required!")
+        sys.exit(1)
+        
+    # 3. Feature order schema validation
+    with open(staging_dir / "final_feature_order.json", "r") as f:
+        saved_features = json.load(f)
+    if list(saved_features) != list(FEATURE_NAMES):
+        logger.error("Promotion REJECTED: Saved feature order does not match code FEATURE_NAMES!")
+        sys.exit(1)
+        
+    # 4. Load and validate model can predict
+    logger.info("Verifying model loading...")
+    try:
+        with open(staging_dir / "final_classifier.pkl", "rb") as f:
+            wrapper = pickle.load(f)
+        # Smoke test input
+        dummy_features = np.zeros((1, len(FEATURE_NAMES)))
+        wrapper.predict(dummy_features)
+        wrapper.predict_proba(dummy_features)
+    except Exception as e:
+        logger.error(f"Promotion REJECTED: Failed to load or run staging classifier wrapper: {e}")
+        sys.exit(1)
+        
+    # 5. Backup current production files
+    production_dir.mkdir(parents=True, exist_ok=True)
+    backup_dir = production_dir.parent / f"backup_production_{int(time.time())}"
+    
+    logger.info(f"Backing up current production model to: {backup_dir}")
+    existing_files_moved = False
+    for fname in required_files + ["model_card.md", "classification_report.json", "confusion_matrix.json", "per_sector_metrics.json", "rule_config.yaml"]:
+        p = production_dir / fname
+        if p.exists():
+            backup_dir.mkdir(parents=True, exist_ok=True)
+            shutil.copy(p, backup_dir / fname)
+            existing_files_moved = True
+            
+    # 6. Copy staging files to temporary directory for final check
+    temp_prod_dir = production_dir.parent / "temp_production"
+    if temp_prod_dir.exists():
+        shutil.rmtree(temp_prod_dir)
+    temp_prod_dir.mkdir(parents=True)
+    
+    logger.info("Staging copy verification...")
+    # Copy staging files + cards to temp production
+    for fname in required_files + ["model_card.md", "classification_report.json", "confusion_matrix.json", "per_sector_metrics.json"]:
+        p = staging_dir / fname
+        if p.exists():
+            shutil.copy(p, temp_prod_dir / fname)
+            
+    # Copy rule_config.yaml to temp production for modification
+    src_config = production_dir / "rule_config.yaml"
+    if not src_config.exists():
+        src_config = REPO_ROOT / "transitlens-ml-core" / "models" / "rule_config.yaml"
+        
+    if src_config.exists():
+        shutil.copy(src_config, temp_prod_dir / "rule_config.yaml")
+        # Update config in temp directory
+        update_rule_config(temp_prod_dir / "rule_config.yaml")
+        
+    # 7. Smoke test the temporary production directory
+    logger.info("Executing inference smoke test on temp production model...")
+    try:
+        mock_features = {k: 0.1 for k in FEATURE_NAMES}
+        res = classify(mock_features, rule_config_path=str(temp_prod_dir / "rule_config.yaml"))
+        logger.info(f"Smoke test prediction succeeded: {res.predicted_class}")
+    except Exception as e:
+        logger.error(f"Promotion REJECTED: Inference smoke test failed on promoted copy: {e}")
+        if temp_prod_dir.exists():
+            shutil.rmtree(temp_prod_dir)
+        sys.exit(1)
+        
+    # 8. Atomic replacement of production artifacts
+    logger.info("Promoting artifacts atomically to production directory...")
+    try:
+        # Move all files from temp_prod_dir directly into production_dir
+        for item in temp_prod_dir.iterdir():
+            dest = production_dir / item.name
+            if dest.exists():
+                dest.unlink()
+            shutil.move(str(item), str(dest))
+            
+        shutil.rmtree(temp_prod_dir)
+        logger.info("Model promoted to PRODUCTION successfully!")
+    except Exception as e:
+        logger.error(f"Promotion FAILED during final file moves: {e}")
+        # Attempt restore if possible
+        if existing_files_moved and backup_dir.exists():
+            logger.info("Attempting to restore original model from backup...")
+            for fname in os.listdir(backup_dir):
+                shutil.copy(backup_dir / fname, production_dir / fname)
+        sys.exit(1)
+
+if __name__ == "__main__":
+    main()

@@ -1,0 +1,13 @@
+{
+  "unique_tics": {
+    "train": 7,
+    "val": 6,
+    "test": 2
+  },
+  "overlaps": {
+    "train_val": [],
+    "train_test": [],
+    "val_test": []
+  },
+  "integrity_passed": true
+}
