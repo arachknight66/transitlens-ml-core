@@ -99,6 +99,39 @@ def _deep_merge(base: dict, override: dict) -> dict:
 
 
 # ---------------------------------------------------------------------------
+# Empty blend diagnostics (all unavailable)
+# ---------------------------------------------------------------------------
+
+def _empty_blend_diagnostics() -> dict:
+    """Return a blend diagnostics dict with all fields set to unavailable/None."""
+    return {
+        "centroid_available": False,
+        "centroid_shift": None,
+        "centroid_shift_significance": None,
+        "centroid_in_transit_x": None,
+        "centroid_in_transit_y": None,
+        "centroid_out_transit_x": None,
+        "centroid_out_transit_y": None,
+        "centroid_shift_points_used": None,
+        "crowding_available": False,
+        "crowding_metric": None,
+        "flux_fraction": None,
+        "dilution_factor": None,
+        "dilution_corrected_depth": None,
+        "contamination_ratio": None,
+        "neighbor_available": False,
+        "gaia_neighbor_count": None,
+        "nearest_neighbor_sep_arcsec": None,
+        "nearest_neighbor_delta_mag": None,
+        "neighbor_flux_ratio_sum": None,
+        "aperture_neighbor_risk": None,
+        "blend_risk_score": None,
+        "blend_risk_level": "unavailable",
+        "blend_evidence_flags": [],
+    }
+
+
+# ---------------------------------------------------------------------------
 # Public entry point
 # ---------------------------------------------------------------------------
 
@@ -256,6 +289,14 @@ def analyze_light_curve(
         feature_result=feature_result,
     )
 
+    # ── Stage 7.1: Blend diagnostics explanation ──────────────────────────
+    blend_diagnostics = getattr(feature_result, "blend_diagnostics", None)
+    if blend_diagnostics:
+        from core.blend_features import get_blend_explanation
+        blend_expl = get_blend_explanation(blend_diagnostics, predicted_class)
+        if blend_expl:
+            explanation = explanation + " " + blend_expl
+
     # ── Stage 7.5: Scientific Fitting and Uncertainties ─────────────────────
     candidate_detected = bls_result.candidate_detected
     bootstrap_fap = None
@@ -339,6 +380,10 @@ def analyze_light_curve(
         "fit_quality":                round(fit_quality, 6) if (candidate_detected and fit_quality is not None) else None,
         # Full feature vector
         "features": {k: round(float(v), 8) for k, v in features.items()},
+        # Blend/contamination diagnostics
+        "diagnostics": {
+            "blend": blend_diagnostics or _empty_blend_diagnostics(),
+        },
         # Human-readable explanation
         "explanation": explanation,
         # Diagnostic plots (base64 PNG strings)
@@ -567,6 +612,9 @@ def _error_result(
         "epoch_btjd": None,
         "fit_quality": None,
         "features": {k: float(_FALLBACK[k]) for k in FEATURE_NAMES},
+        "diagnostics": {
+            "blend": _empty_blend_diagnostics(),
+        },
         "explanation": explanation,
         "plots": {
             "raw_lightcurve": "",

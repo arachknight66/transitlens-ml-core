@@ -131,6 +131,9 @@ def load_npz_targets(manifest_path: Path) -> dict:
             npz_data = np.load(lc_path)
             time_arr = npz_data["time"]
             flux_arr = npz_data["flux"]
+            centroid_x = npz_data["centroid_x"] if "centroid_x" in npz_data else None
+            centroid_y = npz_data["centroid_y"] if "centroid_y" in npz_data else None
+            quality = npz_data["quality"] if "quality" in npz_data else None
         except Exception as e:
             logger.error(f"Failed to load NPZ data for {target_id}: {e}")
             continue
@@ -165,6 +168,9 @@ def load_npz_targets(manifest_path: Path) -> dict:
             "true_epoch": true_epoch,
             "cadence_min": cadence_min,
             "sector": sector,
+            "centroid_x": centroid_x,
+            "centroid_y": centroid_y,
+            "quality": quality,
         }
         
         targets[target_id] = {
@@ -218,6 +224,8 @@ def evaluate_dataset(name: str, targets: dict) -> tuple[list[dict], dict]:
             "true_period": target["metadata"].get("true_period"),
             "true_depth": target["metadata"].get("true_depth"),
             "true_duration": target["metadata"].get("true_duration"),
+            "diagnostics": res.get("diagnostics"),
+            "candidate_detected": res.get("candidate_detected"),
         })
         
         true_labels.append(true_label)
@@ -487,12 +495,191 @@ def main():
     with open(RESULTS_DIR / "metrics.json", "w") as f:
         json.dump(metrics_json, f, indent=2)
     logger.info(f"Saved metrics to {RESULTS_DIR / 'metrics.json'}")
+
+    # Compile Phase 6 Blend Diagnostics outputs
+    all_eval_results = val_results + test_results
+    blend_per_target = []
+    tp, fp, fn, tn = 0, 0, 0, 0
+    false_blend_flags_planets = 0
+    total_planets = 0
+    
+    total_targets = len(all_eval_results)
+    diag_avail_count = 0
+    centroid_avail_count = 0
+    crowding_avail_count = 0
+    neighbor_avail_count = 0
+    
+    false_blend_flags_list = []
+    
+    for r in all_eval_results:
+        tid = r["target_id"]
+        true_lbl = r["true_label"]
+        pred_class = r["predicted_class"]
+        cand_det = r["candidate_detected"]
+        conf = r["confidence"]
+        
+        diag = r.get("diagnostics", {}).get("blend", {}) if r.get("diagnostics") else {}
+        
+        c_avail = diag.get("centroid_available", False)
+        c_shift = diag.get("centroid_shift")
+        c_sig = diag.get("centroid_shift_significance")
+        
+        cr_avail = diag.get("crowding_available", False)
+        cr_metric = diag.get("crowding_metric")
+        
+        n_avail = diag.get("neighbor_available", False)
+        n_count = diag.get("gaia_neighbor_count")
+        n_sep = diag.get("nearest_neighbor_sep_arcsec")
+        n_dmag = diag.get("nearest_neighbor_delta_mag")
+        
+        risk_score = diag.get("blend_risk_score")
+        risk_level = diag.get("blend_risk_level", "unavailable")
+        flags = diag.get("blend_evidence_flags", [])
+        
+        if c_avail or cr_avail or n_avail:
+            diag_avail_count += 1
+        if c_avail:
+            centroid_avail_count += 1
+        if cr_avail:
+            crowding_avail_count += 1
+        if n_avail:
+            neighbor_avail_count += 1
+            
+        correct_blend = (pred_class == "blend_contamination") == (true_lbl == "blend_contamination")
+        
+        # Confusion slice metrics
+        if true_lbl == "blend_contamination":
+            if pred_class == "blend_contamination":
+                tp += 1
+            else:
+                fn += 1
+        else:
+            if pred_class == "blend_contamination":
+                fp += 1
+            else:
+                tn += 1
+                
+        # False blend flags on exoplanet transit cases
+        if true_lbl == "exoplanet_transit":
+            total_planets += 1
+            if risk_level == "high" or pred_class == "blend_contamination":
+                false_blend_flags_planets += 1
+                false_blend_flags_list.append({
+                    "target_id": tid,
+                    "true_label": true_lbl,
+                    "predicted_class": pred_class,
+                    "centroid_shift": c_shift,
+                    "centroid_shift_significance": c_sig,
+                    "crowding_metric": cr_metric,
+                    "blend_risk_level": risk_level,
+                    "blend_evidence_flags": ",".join(flags) if flags else ""
+                })
+                
+        blend_per_target.append({
+            "target_id": tid,
+            "true_label": true_lbl,
+            "predicted_class": pred_class,
+            "candidate_detected": cand_det,
+            "confidence": conf,
+            "centroid_available": c_avail,
+            "centroid_shift": c_shift,
+            "centroid_shift_significance": c_sig,
+            "crowding_available": cr_avail,
+            "crowding_metric": cr_metric,
+            "neighbor_available": n_avail,
+            "gaia_neighbor_count": n_count,
+            "nearest_neighbor_sep_arcsec": n_sep,
+            "nearest_neighbor_delta_mag": n_dmag,
+            "blend_risk_score": risk_score,
+            "blend_risk_level": risk_level,
+            "blend_evidence_flags": ",".join(flags) if flags else "",
+            "correct_blend_prediction": correct_blend
+        })
+        
+    # Write blend_per_target_diagnostics.csv
+    df_blend_target = pd.DataFrame(blend_per_target)
+    df_blend_target.to_csv(RESULTS_DIR / "blend_per_target_diagnostics.csv", index=False)
+    logger.info(f"Saved blend per-target diagnostics to {RESULTS_DIR / 'blend_per_target_diagnostics.csv'}")
+    
+    # Write blend_confusion_slice.csv
+    df_confusion = pd.DataFrame([
+        {"metric": "true_blend", "predicted_blend": tp, "predicted_non_blend": fn},
+        {"metric": "true_non_blend", "predicted_blend": fp, "predicted_non_blend": tn}
+    ])
+    df_confusion.to_csv(RESULTS_DIR / "blend_confusion_slice.csv", index=False)
+    logger.info(f"Saved blend confusion slice to {RESULTS_DIR / 'blend_confusion_slice.csv'}")
+    
+    # Write blend_false_flags.csv
+    df_false = pd.DataFrame(false_blend_flags_list)
+    df_false.to_csv(RESULTS_DIR / "blend_false_flags.csv", index=False)
+    logger.info(f"Saved blend false flags list to {RESULTS_DIR / 'blend_false_flags.csv'}")
+    
+    # Compute precision, recall, F1
+    blend_precision = tp / (tp + fp) if (tp + fp) > 0 else 0.0
+    blend_recall = tp / (tp + fn) if (tp + fn) > 0 else 0.0
+    blend_f1 = 2 * blend_precision * blend_recall / (blend_precision + blend_recall) if (blend_precision + blend_recall) > 0 else 0.0
+    false_flag_rate = false_blend_flags_planets / total_planets if total_planets > 0 else 0.0
+    
+    blend_summary = {
+        "blend_precision": blend_precision,
+        "blend_recall": blend_recall,
+        "blend_f1": blend_f1,
+        "false_blend_flag_rate_on_planets": false_flag_rate,
+        "diagnostic_availability_rate": diag_avail_count / total_targets if total_targets > 0 else 0.0,
+        "centroid_availability_rate": centroid_avail_count / total_targets if total_targets > 0 else 0.0,
+        "crowding_availability_rate": crowding_avail_count / total_targets if total_targets > 0 else 0.0,
+        "neighbor_availability_rate": neighbor_avail_count / total_targets if total_targets > 0 else 0.0
+    }
+    
+    with open(RESULTS_DIR / "blend_diagnostics_summary.json", "w") as f:
+        json.dump(blend_summary, f, indent=2)
+    logger.info(f"Saved blend diagnostics summary JSON to {RESULTS_DIR / 'blend_diagnostics_summary.json'}")
+        
+    def to_md_table(df):
+        if df.empty:
+            return "No false flags identified."
+        cols = list(df.columns)
+        headers = "| " + " | ".join(cols) + " |"
+        separator = "| " + " | ".join(["---"] * len(cols)) + " |"
+        rows = []
+        for _, row in df.iterrows():
+            row_str = "| " + " | ".join(str(row[c]) for c in cols) + " |"
+            rows.append(row_str)
+        return "\n".join([headers, separator] + rows)
+
+    # Write blend_diagnostics_report.md
+    report_md = f"""# TransitLens Blend & Contamination Diagnostics Performance Report
+
+## 1. Executive Summary
+- **Diagnostic Availability Rate**: {blend_summary['diagnostic_availability_rate']*100:.1f}%
+- **Centroid Availability Rate**: {blend_summary['centroid_availability_rate']*100:.1f}%
+- **Crowding Availability Rate**: {blend_summary['crowding_availability_rate']*100:.1f}%
+- **Neighbor Availability Rate**: {blend_summary['neighbor_availability_rate']*100:.1f}%
+- **Blend Classification Precision**: {blend_precision*100:.1f}%
+- **Blend Classification Recall**: {blend_recall*100:.1f}%
+- **Blend Classification F1-Score**: {blend_f1:.4f}
+- **False Blend Flag Rate on Clean Planets**: {false_flag_rate*100:.1f}%
+
+## 2. Confusion Matrix (Blend Contamination Slice)
+| | Predicted Blend | Predicted Non-Blend |
+|---|---|---|
+| **True Blend** | {tp} (TP) | {fn} (FN) |
+| **True Non-Blend** | {fp} (FP) | {tn} (TN) |
+
+## 3. False Blend Flags
+Listed below are the clean exoplanet transit targets that were flagged with high blend risk or classified as blend:
+
+{to_md_table(df_false)}
+"""
+    with open(RESULTS_DIR / "blend_diagnostics_report.md", "w", encoding="utf-8") as f:
+        f.write(report_md)
+    logger.info(f"Saved blend diagnostics report to {RESULTS_DIR / 'blend_diagnostics_report.md'}")
     
     # Write full_evaluation_summary.md report
     def _ir_val(key, default="N/A"):
         """Safely get injection-recovery metric for report."""
         if injection_summary is None:
-            return "(not run — use --injection to enable)"
+            return "(not run - use --injection to enable)"
         val = injection_summary.get(key)
         if val is None:
             return default
@@ -534,9 +721,9 @@ def main():
 > Run `python -m eval.run_injection_recovery --mode standard` for a full benchmark.
 
 - **Detection Recall (all SNR)**: {_ir_val('detection_recall')}
-- **Detection Recall (SNR ≥ 7)**: {_ir_val('detection_recall_high_snr')}
-- **Period Recovery ±1% (all)**: {_ir_val('period_recovery_rate_1pct')}
-- **Period Recovery ±1% (SNR ≥ 7)**: {_ir_val('period_recovery_1pct_high_snr')}
+- **Detection Recall (SNR >= 7)**: {_ir_val('detection_recall_high_snr')}
+- **Period Recovery +/- 1% (all)**: {_ir_val('period_recovery_rate_1pct')}
+- **Period Recovery +/- 1% (SNR >= 7)**: {_ir_val('period_recovery_1pct_high_snr')}
 - **False-Positive Rate (controls)**: {_ir_val('false_positive_rate_controls')}
 
 See `eval/results/phase4_injection_recovery_report.md` for the full Phase 4 report.
@@ -544,7 +731,7 @@ See `eval/results/phase4_injection_recovery_report.md` for the full Phase 4 repo
     summary_path = RESULTS_DIR / "full_evaluation_summary.md"
     summary_path.write_text(summary_md, encoding="utf-8")
     logger.info(f"Saved evaluation summary report to {summary_path}")
-    print("\nEvaluation Complete! Summary:\n" + summary_md)
+    print("\nEvaluation Complete!")
 
 if __name__ == "__main__":
     main()

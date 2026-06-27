@@ -95,22 +95,27 @@ _N_PHASE_BINS = 100
 @dataclass
 class FeatureResult:
     """
-    Container for the 11 extracted features plus reliability metadata.
+    Container for the 16 extracted features plus reliability metadata.
 
     Attributes
     ----------
     features : dict[str, float]
-        Exactly 11 keys — the canonical FEATURE_NAMES.
+        Exactly 16 keys — the canonical FEATURE_NAMES.
     reliable : dict[str, bool]
         Per-feature reliability flag. False means the feature was set to
         its fallback value because computation was not possible (e.g.
         too few transit events for odd_even_depth_delta).
     candidate_detected : bool
         Forwarded from BLSResult.candidate_detected.
+    blend_diagnostics : dict or None
+        Full blend/contamination diagnostics from blend_features module.
+        Contains availability flags, centroid/crowding/neighbor results,
+        and blend risk score. None if blend diagnostics were not computed.
     """
     features: dict[str, float]
     reliable: dict[str, bool]
     candidate_detected: bool
+    blend_diagnostics: dict | None = None
 
     def as_array(self) -> np.ndarray:
         """Return features as a numpy array in FEATURE_NAMES order."""
@@ -289,12 +294,31 @@ def extract(
         features["odd_even_depth_delta"] = alias_res["odd_even_delta"]
 
     # ── Features 14-16: blend features ───────────────────────────────────
-    from core.blend_features import extract_blend_features
-    target_id = (metadata or {}).get("target_id", "unknown")
-    blend_feats = extract_blend_features(target_id, time, flux, metadata)
-    features["centroid_shift"] = blend_feats["centroid_shift"]
-    features["crowding_metric"] = blend_feats["crowding_metric"]
-    features["gaia_neighbor_count"] = blend_feats["gaia_neighbor_count"]
+    from core.blend_features import extract_blend_diagnostics
+    meta = metadata or {}
+    # Extract centroid arrays from metadata if provided (real TESS data)
+    centroid_x = meta.get("centroid_x")
+    centroid_y = meta.get("centroid_y")
+    quality_arr = meta.get("quality")
+
+    blend_result = extract_blend_diagnostics(
+        time=time,
+        flux=flux,
+        period=period,
+        t0=t0,
+        duration=duration,
+        observed_depth=depth,
+        metadata=meta,
+        centroid_x=centroid_x,
+        centroid_y=centroid_y,
+        quality=quality_arr,
+        transit_features=features,
+    )
+    blend_diagnostics = blend_result["diagnostics"]
+    clf_blend = blend_result["classifier_features"]
+    features["centroid_shift"] = clf_blend["centroid_shift"]
+    features["crowding_metric"] = clf_blend["crowding_metric"]
+    features["gaia_neighbor_count"] = clf_blend["gaia_neighbor_count"]
 
     if not bls_result.candidate_detected:
         for k in ["odd_even_depth_delta", "v_shape_score", "phase_shape_kurtosis", "secondary_eclipse_depth"]:
@@ -317,6 +341,7 @@ def extract(
         features=features,
         reliable=reliable,
         candidate_detected=bls_result.candidate_detected,
+        blend_diagnostics=blend_diagnostics,
     )
 
 
