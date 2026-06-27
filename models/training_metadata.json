@@ -1,35 +1,54 @@
 {
-  "training_date": "2026-06-26 23:55:37",
-  "evidence_level": "sufficient",
-  "sufficiency_reasons": "All classes satisfy target sizes.",
-  "model_type": "RandomForest",
-  "features_used": [
-    "bls_power",
-    "snr",
-    "period_days",
-    "duration_days",
-    "depth",
-    "transit_count",
-    "odd_even_depth_delta",
-    "v_shape_score",
-    "local_noise",
-    "depth_to_noise_ratio",
-    "phase_shape_kurtosis",
-    "bls_sde",
-    "secondary_eclipse_depth",
-    "centroid_shift",
-    "crowding_metric",
-    "gaia_neighbor_count"
+  "training_date": "2026-06-27 18:19:22",
+  "random_seed": 42,
+  "model_type": "CalibratedRandomForest",
+  "evidence_level": "restricted",
+  "sufficiency_notes": "exoplanet_transit train count 3 < 20; exoplanet_transit test count 0 < 10",
+  "archive_hashes": {
+    "TOI_catalog": "7302f42b6af38f7aa1266f0cb314e11f54b0cb08b8468e09160e3794ada69f5f",
+    "TCE_stats": "d432b93dccd9759965a998df1eb225e3fb71de66510617ac85e461fa931c4a17"
+  },
+  "label_policy_version": "1.0.0",
+  "preprocessing_config": {
+    "sigma_upper": 5.0,
+    "sigma_lower": 50.0,
+    "max_sigma_iter": 3,
+    "detrend_method": "running_median",
+    "detrend_window_days": 1.5,
+    "detrend_poly_degree": 2,
+    "gap_threshold_factor": 5.0,
+    "min_points": 500,
+    "min_time_span_days": 5.0,
+    "min_fraction_retained": 0.8
+  },
+  "aperture_photometry_version": "connected_threshold_v1.0",
+  "cutout_size_pixels": 15,
+  "train_tic_ids": [
+    1003831,
+    1129033,
+    1167538
   ],
+  "sectors_trained": [
+    78
+  ],
+  "package_versions": {
+    "numpy": "2.4.6",
+    "pandas": "2.3.3",
+    "scipy": "1.18.0",
+    "sklearn": "1.9.0",
+    "astropy": "8.0.0",
+    "astroquery": "0.4.11",
+    "lightkurve": "2.6.0"
+  },
   "dataset_sizes": {
-    "train": 604,
-    "val": 202,
-    "test": 201
+    "train": 3,
+    "val": 1,
+    "test": 0
   },
   "metrics": {
-    "test_accuracy": 1.0,
-    "test_macro_f1": 1.0,
-    "ece": 0.019477719150455486,
-    "brier_score": 0.0005186859509861273
+    "test_accuracy": 0.0,
+    "test_macro_f1": 0.0,
+    "ece": 0.0,
+    "brier_score": 0.0
   }
 }

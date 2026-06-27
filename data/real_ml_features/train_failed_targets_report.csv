@@ -1,0 +1,2 @@
+target_id,class_label,failure_reason
+TIC-1333933,exoplanet_transit,Processed light curve (NPZ) missing or download failed

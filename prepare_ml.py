@@ -4,8 +4,8 @@ prepare_ml.py
 Phase 5 Feature Matrix Generator.
 
 Loads target-disjoint splits, generates features using pipeline extraction (with stochastically 
-simulated light curves for catalog-only targets), and outputs train, validation, and test 
-feature matrices for classifier training.
+simulated light curves for catalog-only targets by default, or strictly real-only targets), 
+and outputs train, validation, and test feature matrices for classifier training.
 """
 
 from __future__ import annotations
@@ -44,7 +44,6 @@ DATA_PIPELINE_DIR = REPO_ROOT / "transitlens-data-pipeline"
 SPLITS_DIR = DATA_PIPELINE_DIR / "datasets" / "splits"
 PROCESSED_LC_DIR = DATA_PIPELINE_DIR / "datasets" / "processed" / "lightcurves"
 MANIFEST_SPLITS_DIR = PROCESSED_LC_DIR / "splits"
-OUTPUT_DIR = Path(__file__).resolve().parent / "data" / "ml_features"
 
 def normalize_target_id(raw_id, prefix="KIC"):
     """Normalizes IDs to standard TransitLens formats like KIC-123456 or TIC-123456."""
@@ -150,7 +149,6 @@ def process_single_target(
     metadata: dict
 ) -> dict:
     """Processes a single target through clean, detect, and extract, returning a feature row dict."""
-    t0 = time.perf_counter()
     row = {
         "target_id": target_id,
         "class_label": label,
@@ -202,6 +200,126 @@ def process_single_target(
         
     return row
 
+def generate_split_real_only(
+    split_name: str,
+    manifest_df: pd.DataFrame,
+    resume: bool,
+    output_dir: Path
+) -> list[dict]:
+    """Generates the feature list for a specific split using strictly real data from manifest."""
+    logger.info("--- Generating real-only split: %s ---", split_name)
+    split_rows = []
+    processed_targets = set()
+    
+    output_file = output_dir / f"{split_name}_features.csv"
+    if resume and output_file.exists():
+        logger.info("Resume mode: Loading existing feature file %s", output_file.name)
+        df_existing = pd.read_csv(output_file)
+        split_rows = df_existing.to_dict(orient="records")
+        processed_targets = set(df_existing["target_id"].tolist())
+        logger.info("Loaded %d already processed targets", len(processed_targets))
+        
+    # Get manifest targets for this split
+    split_targets_df = manifest_df[manifest_df["split"] == split_name]
+    logger.info("Found %d targets in manifest for split %s", len(split_targets_df), split_name)
+    
+    tasks = []
+    
+    for idx, target in split_targets_df.iterrows():
+        tid = target["target_id"]
+        class_label = target["class_label"]
+        
+        if tid in processed_targets:
+            continue
+            
+        processed_path = target.get("processed_path")
+        if pd.isnull(processed_path) or not processed_path or not os.path.exists(processed_path):
+            split_rows.append({
+                "target_id": tid,
+                "class_label": class_label,
+                "split": split_name,
+                "processing_status": "failed",
+                "failure_reason": "Processed light curve (NPZ) missing or download failed",
+                "candidate_detected": 0,
+                "true_period_days": target.get("period_days", 0.0),
+                "true_duration_days": target.get("duration_days", 0.0),
+                "true_depth": target.get("depth_ppm", 0.0) / 1e6,
+                **{k: 0.0 for k in FEATURE_NAMES}
+            })
+            continue
+            
+        try:
+            data = np.load(processed_path)
+            time_arr = data["time"]
+            flux_arr = data["flux"]
+            
+            meta = {
+                "true_period": target.get("period_days"),
+                "true_duration": target.get("duration_days"),
+                "true_depth": target.get("depth_ppm", 0.0) / 1e6,
+            }
+            if "quality" in data:
+                meta["quality"] = data["quality"]
+            if "centroid_x" in data:
+                meta["centroid_x"] = data["centroid_x"]
+            if "centroid_y" in data:
+                meta["centroid_y"] = data["centroid_y"]
+            if "flux_err" in data:
+                meta["flux_err"] = data["flux_err"]
+                
+            tasks.append((tid, class_label, time_arr, flux_arr, meta, target))
+            processed_targets.add(tid)
+        except Exception as exc:
+            logger.error("Failed to load NPZ for target %s: %s", tid, exc)
+            split_rows.append({
+                "target_id": tid,
+                "class_label": class_label,
+                "split": split_name,
+                "processing_status": "failed",
+                "failure_reason": f"NPZ load failed: {exc}",
+                "candidate_detected": 0,
+                "true_period_days": target.get("period_days", 0.0),
+                "true_duration_days": target.get("duration_days", 0.0),
+                "true_depth": target.get("depth_ppm", 0.0) / 1e6,
+                **{k: 0.0 for k in FEATURE_NAMES}
+            })
+            
+    # Process tasks in parallel
+    if tasks:
+        logger.info("Processing %d real targets in parallel...", len(tasks))
+        import concurrent.futures
+        with concurrent.futures.ProcessPoolExecutor() as executor:
+            futures = {
+                executor.submit(process_single_target, tid, lbl, t_arr, f_arr, meta): (tid, lbl, target)
+                for tid, lbl, t_arr, f_arr, meta, target in tasks
+            }
+            completed_count = 0
+            for fut in concurrent.futures.as_completed(futures):
+                tid, lbl, target = futures[fut]
+                try:
+                    row_feat = fut.result()
+                    row_feat["split"] = split_name
+                    # Preserve catalogue truth in separate non-feature columns
+                    row_feat["true_period_days"] = target.get("period_days", 0.0)
+                    row_feat["true_duration_days"] = target.get("duration_days", 0.0)
+                    row_feat["true_depth"] = target.get("depth_ppm", 0.0) / 1e6
+                    
+                    # Verify all feature values are finite
+                    for k in FEATURE_NAMES:
+                        if not np.isfinite(row_feat[k]):
+                            row_feat[k] = 0.0
+                            row_feat["processing_status"] = "failed"
+                            row_feat["failure_reason"] = f"Non-finite feature {k}"
+                            
+                    split_rows.append(row_feat)
+                except Exception as exc:
+                    logger.error("Task failed for target %s: %s", tid, exc)
+                completed_count += 1
+                if completed_count % 50 == 0:
+                    logger.info("Progress: %d/%d completed for split %s", completed_count, len(tasks), split_name)
+                    
+    return split_rows
+
 def generate_split(
     split_name: str,
     target_count_per_class: int,
@@ -209,12 +327,12 @@ def generate_split(
     resume: bool,
     rng: np.random.Generator
 ) -> list[dict]:
-    """Generates the feature list for a specific split (train, val, test)."""
-    logger.info("--- Generating split: %s ---", split_name)
+    """Generates the feature list for a specific split (train, val, test) stochastically."""
+    logger.info("--- Generating split stochastically: %s ---", split_name)
     split_rows = []
     processed_targets = set()
     
-    output_file = OUTPUT_DIR / f"{split_name}_features.csv"
+    output_file = (REPO_ROOT / "transitlens-ml-core" / "data" / "ml_features") / f"{split_name}_features.csv"
     if resume and output_file.exists():
         logger.info("Resume mode: Loading existing feature file %s", output_file.name)
         df_existing = pd.read_csv(output_file)
@@ -338,6 +456,9 @@ def generate_split(
                 try:
                     row_feat = fut.result()
                     row_feat["split"] = split_name
+                    row_feat["true_period_days"] = 0.0
+                    row_feat["true_duration_days"] = 0.0
+                    row_feat["true_depth"] = 0.0
                     split_rows.append(row_feat)
                     if row_feat["processing_status"] == "success":
                         class_counts[row_feat["class_label"]] += 1
@@ -355,56 +476,112 @@ def main():
     parser.add_argument("--split", choices=["train", "val", "test", "all"], default="all", help="Which split to generate")
     parser.add_argument("--resume", action="store_true", help="Resume from partially generated files")
     parser.add_argument("--cache", action="store_true", help="Use cache if available")
+    
+    # Real-only flags
+    parser.add_argument("--real-only", action="store_true", help="Run in strict real-only mode without synthetic data")
+    parser.add_argument("--manifest", type=str, default=None, help="Path to manifest Parquet file (required for real-only)")
+    parser.add_argument("--output-dir", type=str, default=None, help="Output directory to write features")
     args = parser.parse_args()
     
-    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+    # Establish output directory
+    if args.output_dir:
+        output_dir = Path(args.output_dir)
+    else:
+        output_dir = Path(__file__).resolve().parent / "data" / "ml_features"
+    output_dir.mkdir(parents=True, exist_ok=True)
+    
     rng = np.random.default_rng(42)
     
-    # Load catalog lookups
-    lookups = load_catalog_lookups()
-    
     splits_to_process = ["train", "val", "test"] if args.split == "all" else [args.split]
-    
-    # Target counts per class
-    target_counts = {
-        "train": args.limit or 150,
-        "val": args.limit or 50,
-        "test": args.limit or 50
-    }
-    
     report_data = []
     
-    for split in splits_to_process:
-        rows = generate_split(split, target_counts[split], lookups, args.resume, rng)
-        df_split = pd.DataFrame(rows)
+    if args.real_only:
+        if not args.manifest:
+            logger.error("--manifest is required in --real-only mode.")
+            sys.exit(1)
+            
+        logger.info(f"Running in --real-only mode. Loading manifest: {args.manifest}")
+        manifest_df = pd.read_parquet(args.manifest)
         
-        # Ensure correct column ordering
-        cols = ["target_id", "class_label", "split"] + list(FEATURE_NAMES) + ["candidate_detected", "predicted_class_rule", "processing_status", "failure_reason"]
-        # If columns missing, initialize them
-        for c in cols:
-            if c not in df_split.columns:
-                df_split[c] = ""
-        df_split = df_split[cols]
+        # In real-only mode, we strictly only process downloaded/cached targets
+        downloaded_manifest = manifest_df[manifest_df["download_status"].isin(["downloaded", "cached"])]
+        logger.info(f"Loaded {len(downloaded_manifest)} successfully acquired targets from manifest.")
         
-        # Save output
-        out_csv = OUTPUT_DIR / f"{split}_features.csv"
-        df_split.to_csv(out_csv, index=False)
-        logger.info("Saved feature matrix to %s", out_csv)
+        for split in splits_to_process:
+            rows = generate_split_real_only(split, downloaded_manifest, args.resume, output_dir)
+            df_split = pd.DataFrame(rows)
+            
+            # Ensure correct column ordering
+            cols = ["target_id", "class_label", "split"] + list(FEATURE_NAMES) + [
+                "candidate_detected", "predicted_class_rule", "processing_status", "failure_reason",
+                "true_period_days", "true_duration_days", "true_depth"
+            ]
+            for c in cols:
+                if c not in df_split.columns:
+                    df_split[c] = ""
+            df_split = df_split[cols]
+            
+            out_csv = output_dir / f"{split}_features.csv"
+            df_split.to_csv(out_csv, index=False)
+            logger.info("Saved feature matrix to %s", out_csv)
+            
+            # Gather stats
+            status_counts = df_split["processing_status"].value_counts().to_dict()
+            class_distribution = df_split[df_split["processing_status"] == "success"]["class_label"].value_counts().to_dict()
+            report_data.append({
+                "split": split,
+                "total": len(df_split),
+                "success": status_counts.get("success", 0),
+                "failed": status_counts.get("failed", 0),
+                "classes": class_distribution
+            })
+            
+            # Write failed target reports in --real-only mode
+            failed_targets = df_split[df_split["processing_status"] == "failed"]
+            if len(failed_targets) > 0:
+                fail_report_path = output_dir / f"{split}_failed_targets_report.csv"
+                failed_targets[["target_id", "class_label", "failure_reason"]].to_csv(fail_report_path, index=False)
+                logger.info(f"Saved failed-target report for {split} split to {fail_report_path}")
+                
+    else:
+        # Load catalog lookups (for default synthetic fallback mode)
+        lookups = load_catalog_lookups()
         
-        # Gather stats
-        status_counts = df_split["processing_status"].value_counts().to_dict()
-        class_distribution = df_split[df_split["processing_status"] == "success"]["class_label"].value_counts().to_dict()
-        report_data.append({
-            "split": split,
-            "total": len(df_split),
-            "success": status_counts.get("success", 0),
-            "failed": status_counts.get("failed", 0),
-            "classes": class_distribution
-        })
+        target_counts = {
+            "train": args.limit or 150,
+            "val": args.limit or 50,
+            "test": args.limit or 50
+        }
         
+        for split in splits_to_process:
+            rows = generate_split(split, target_counts[split], lookups, args.resume, rng)
+            df_split = pd.DataFrame(rows)
+            
+            cols = ["target_id", "class_label", "split"] + list(FEATURE_NAMES) + [
+                "candidate_detected", "predicted_class_rule", "processing_status", "failure_reason",
+                "true_period_days", "true_duration_days", "true_depth"
+            ]
+            for c in cols:
+                if c not in df_split.columns:
+                    df_split[c] = ""
+            df_split = df_split[cols]
+            
+            out_csv = output_dir / f"{split}_features.csv"
+            df_split.to_csv(out_csv, index=False)
+            logger.info("Saved feature matrix to %s", out_csv)
+            
+            status_counts = df_split["processing_status"].value_counts().to_dict()
+            class_distribution = df_split[df_split["processing_status"] == "success"]["class_label"].value_counts().to_dict()
+            report_data.append({
+                "split": split,
+                "total": len(df_split),
+                "success": status_counts.get("success", 0),
+                "failed": status_counts.get("failed", 0),
+                "classes": class_distribution
+            })
+            
     # Write feature generation report
-    report_path = OUTPUT_DIR / "feature_generation_report.md"
-    
+    report_path = output_dir / "feature_generation_report.md"
     report_lines = [
         "# Feature Generation Report",
         f"Generated on: {time.strftime('%Y-%m-%d %H:%M:%S')}",
@@ -426,12 +603,12 @@ def main():
     report_lines.extend([
         "",
         "## Configuration",
-        f"- Target count per class: Train={target_counts.get('train')}, Val={target_counts.get('val')}, Test={target_counts.get('test')}",
+        f"- Real-only mode: {args.real_only}",
         f"- Resume: {args.resume}",
         f"- Feature count: {len(FEATURE_NAMES)} features",
         "",
         "## Excluded / Included Features",
-        "The feature matrix retains `target_id`, `class_label`, and `split` columns for downstream splitting and evaluation, but ML models MUST only use the following feature columns for training and evaluation:",
+        "The feature matrix retains metadata columns for downstream evaluation, but ML models MUST only use the following feature columns for training and evaluation:",
         ""
     ])
     for fname in FEATURE_NAMES:
