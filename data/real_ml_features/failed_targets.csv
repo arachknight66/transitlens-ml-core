@@ -1,2 +1,1 @@
-target_id,tic_id,sector,class_label,split,processing_status,failure_reason,true_period_days,true_duration_days,true_depth,bls_power,snr,period_days,duration_days,depth,transit_count,odd_even_depth_delta,v_shape_score,local_noise,depth_to_noise_ratio,phase_shape_kurtosis,bls_sde,secondary_eclipse_depth,centroid_shift,crowding_metric,gaia_neighbor_count,candidate_detected,predicted_class_rule
-TIC-1333933,1333933,5,exoplanet_transit,train,failed,Photometry error: Too few valid points after photometry: 18 < 100,3.2757945,0.09965420833333333,0.011304975042,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,,
+

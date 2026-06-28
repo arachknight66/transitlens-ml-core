@@ -226,36 +226,111 @@ def main():
     y_val_idx = np.array([class_to_idx[y] for y in y_val]) if len(y_val) > 0 else np.array([])
     y_test_idx = np.array([class_to_idx[y] for y in y_test]) if len(y_test) > 0 else np.array([])
     
-    # Train class-weighted RandomForest baseline
-    rf = RandomForestClassifier(
-        n_estimators=300,
-        max_depth=8,
-        min_samples_leaf=2,
-        class_weight="balanced",
-        random_state=args.seed,
-        n_jobs=-1
-    )
-    rf.fit(X_train_scaled, y_train)
+    # Pad train split with dummy samples for missing classes to ensure continuous integer classes for XGBoost
+    existing_classes = set(y_train)
+    missing_classes = [c for c in expected_classes if c not in existing_classes]
+    groups = train_df["tic_id"].values
     
-    # Platt probability calibration
+    if missing_classes:
+        logger.info(f"Padding training split with dummy samples for missing classes: {missing_classes}")
+        dummy_X = np.zeros((len(missing_classes), X_train_scaled.shape[1]))
+        dummy_y = np.array(missing_classes)
+        dummy_y_idx = np.array([class_to_idx[c] for c in missing_classes])
+        
+        X_train_scaled = np.vstack([X_train_scaled, dummy_X])
+        y_train = np.concatenate([y_train, dummy_y])
+        y_train_idx = np.concatenate([y_train_idx, dummy_y_idx])
+        dummy_groups = np.array([-1 - i for i in range(len(missing_classes))])
+        groups = np.concatenate([groups, dummy_groups])
+        
+    # Pad validation split with dummy samples for missing classes to ensure calibration works for all classes
+    existing_val_classes = set(y_val)
+    missing_val_classes = [c for c in expected_classes if c not in existing_val_classes]
+    if missing_val_classes and len(X_val_scaled) > 0:
+        logger.info(f"Padding validation split with dummy samples for missing classes: {missing_val_classes}")
+        dummy_X_val = np.zeros((len(missing_val_classes), X_val_scaled.shape[1]))
+        dummy_y_val = np.array(missing_val_classes)
+        dummy_y_val_idx = np.array([class_to_idx[c] for c in missing_val_classes])
+        
+        X_val_scaled = np.vstack([X_val_scaled, dummy_X_val])
+        y_val = np.concatenate([y_val, dummy_y_val])
+        y_val_idx = np.concatenate([y_val_idx, dummy_y_val_idx])
+    
+    # 1. Establish Logistic Regression, Random Forest, and XGBoost baselines using GroupKFold
+    from sklearn.model_selection import GroupKFold
+    from sklearn.linear_model import LogisticRegression
+    from xgboost import XGBClassifier
+    from sklearn.metrics import f1_score
+    
+    n_splits = min(3, len(np.unique(groups)))
+    gkf = GroupKFold(n_splits=n_splits)
+    
+    baseline_models = {
+        "logistic_regression": LogisticRegression(max_iter=1000, class_weight='balanced', random_state=args.seed),
+        "random_forest": RandomForestClassifier(n_estimators=300, max_depth=8, min_samples_leaf=2, class_weight='balanced', random_state=args.seed, n_jobs=-1),
+        "xgboost": XGBClassifier(n_estimators=100, max_depth=4, random_state=args.seed, n_jobs=-1, eval_metric="mlogloss")
+    }
+    
+    cv_scores = {}
+    for name, model in baseline_models.items():
+        scores = []
+        for train_idx, val_idx in gkf.split(X_train_scaled, y_train_idx, groups=groups):
+            X_tr, y_tr = X_train_scaled[train_idx], y_train_idx[train_idx]
+            X_va, y_va = X_train_scaled[val_idx], y_train_idx[val_idx]
+            
+            # Ensure CV training fold contains all classes to satisfy XGBoost schema constraints
+            missing_cv_classes = [idx for idx in range(len(expected_classes)) if idx not in set(y_tr)]
+            if missing_cv_classes:
+                dummy_X_cv = np.zeros((len(missing_cv_classes), X_tr.shape[1]))
+                dummy_y_cv = np.array(missing_cv_classes)
+                X_tr = np.vstack([X_tr, dummy_X_cv])
+                y_tr = np.concatenate([y_tr, dummy_y_cv])
+                
+            # Train on fold
+            model.fit(X_tr, y_tr)
+            preds = model.predict(X_va)
+            scores.append(f1_score(y_va, preds, average="macro", zero_division=0))
+        mean_score = float(np.mean(scores))
+        cv_scores[name] = mean_score
+        logger.info(f"Baseline {name} - GroupKFold Macro F1: {mean_score:.4f}")
+        
+    best_model_name = max(cv_scores, key=cv_scores.get)
+    logger.info(f"Selected best baseline model: {best_model_name} (Macro F1 = {cv_scores[best_model_name]:.4f})")
+    
+    # Fit best model on full training split
+    is_xgboost = (best_model_name == "xgboost")
+    if is_xgboost:
+        best_model = XGBClassifier(n_estimators=100, max_depth=4, random_state=args.seed, n_jobs=-1, eval_metric="mlogloss")
+        best_model.fit(X_train_scaled, y_train_idx)
+    elif best_model_name == "logistic_regression":
+        best_model = LogisticRegression(max_iter=1000, class_weight='balanced', random_state=args.seed)
+        best_model.fit(X_train_scaled, y_train)
+    else:
+        best_model = RandomForestClassifier(n_estimators=300, max_depth=8, min_samples_leaf=2, class_weight='balanced', random_state=args.seed, n_jobs=-1)
+        best_model.fit(X_train_scaled, y_train)
+        
+    # Platt probability calibration on separate validation set
     is_calibrated = False
     can_calibrate = len(X_val_scaled) > 0 and len(np.unique(y_val)) == len(expected_classes)
+    
     if can_calibrate:
         logger.info("Fitting Platt probability calibrator on validation split using FrozenEstimator...")
         from sklearn.frozen import FrozenEstimator
-        frozen_model = FrozenEstimator(rf)
+        frozen_model = FrozenEstimator(best_model)
         custom_cv = [(np.arange(len(X_val_scaled)), np.arange(len(X_val_scaled)))]
+        
+        y_val_calib = y_val_idx if is_xgboost else y_val
         calibrator = CalibratedClassifierCV(estimator=frozen_model, method="sigmoid", cv=custom_cv)
-        calibrator.fit(X_val_scaled, y_val)
+        calibrator.fit(X_val_scaled, y_val_calib)
         model_to_save = calibrator
         is_calibrated = True
     else:
-        logger.warning("Bypassing calibration due to insufficient validation samples or classes. Using raw classifier.")
-        model_to_save = rf
+        logger.warning("Bypassing calibration due to validation set constraints. Using raw classifier.")
+        model_to_save = best_model
         is_calibrated = False
         
     # Save final model wrapper
-    wrapper = TransitLensClassifier(model=model_to_save, scaler=scaler, classes=expected_classes, is_xgboost=False)
+    wrapper = TransitLensClassifier(model=model_to_save, scaler=scaler, classes=expected_classes, is_xgboost=is_xgboost)
     
     # Save files
     with open(output_dir / "final_classifier.pkl", "wb") as f:
@@ -314,7 +389,7 @@ def main():
     metadata = {
         "training_date": time.strftime("%Y-%m-%d %H:%M:%S"),
         "random_seed": args.seed,
-        "model_type": "CalibratedRandomForest" if is_calibrated else "RandomForest",
+        "model_type": f"Calibrated{best_model_name.replace('_', ' ').title().replace(' ', '')}" if is_calibrated else best_model_name.replace('_', ' ').title().replace(' ', ''),
         "label_mode": args.label_mode,
         "trained_classes": expected_classes,
         "production_eligible": production_eligible,

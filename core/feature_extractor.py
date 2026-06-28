@@ -56,6 +56,8 @@ FEATURE_NAMES = (
     "centroid_shift",
     "crowding_metric",
     "gaia_neighbor_count",
+    "odd_even_significance",
+    "secondary_eclipse_significance",
 )
 
 # Default fallback values used when a feature cannot be computed reliably
@@ -76,6 +78,8 @@ _FALLBACK = {
     "centroid_shift": 0.0,
     "crowding_metric": 1.0,
     "gaia_neighbor_count": 0,
+    "odd_even_significance": 0.0,
+    "secondary_eclipse_significance": 0.0,
 }
 
 # Minimum in-transit points needed to compute shape features reliably
@@ -288,6 +292,8 @@ def extract(
 
     # ── Feature 13: secondary_eclipse_depth ──────────────────────────────
     features["secondary_eclipse_depth"] = alias_res["secondary_eclipse_depth"]
+    features["secondary_eclipse_significance"] = alias_res["secondary_eclipse_significance"]
+    features["odd_even_significance"] = alias_res["odd_even_significance"]
 
     # Update odd_even_depth_delta if alias resolver has a better one
     if reliable["odd_even_depth_delta"] and alias_res["odd_even_delta"] > 0:
@@ -321,7 +327,7 @@ def extract(
     features["gaia_neighbor_count"] = clf_blend["gaia_neighbor_count"]
 
     if not bls_result.candidate_detected:
-        for k in ["odd_even_depth_delta", "v_shape_score", "phase_shape_kurtosis", "secondary_eclipse_depth"]:
+        for k in ["odd_even_depth_delta", "v_shape_score", "phase_shape_kurtosis", "secondary_eclipse_depth", "odd_even_significance", "secondary_eclipse_significance"]:
             features[k] = _FALLBACK[k]
             reliable[k] = False
 

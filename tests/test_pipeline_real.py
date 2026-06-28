@@ -154,9 +154,9 @@ def test_aperture_fallback(tmp_path):
 
 def test_feature_order_matches_inference():
     """Verify that FEATURE_NAMES has the correct dimensions and order matches classifier expectations."""
-    assert len(FEATURE_NAMES) == 16
+    assert len(FEATURE_NAMES) == 18
     assert FEATURE_NAMES[0] == "bls_power"
-    assert FEATURE_NAMES[-1] == "gaia_neighbor_count"
+    assert FEATURE_NAMES[-1] == "secondary_eclipse_significance"
 
 def test_inference_final_feature_order_validation(tmp_path):
     """Test that classifier raises ClassificationError when feature order mismatches or is missing."""
@@ -167,9 +167,9 @@ def test_inference_final_feature_order_validation(tmp_path):
     from sklearn.ensemble import RandomForestClassifier
     from sklearn.preprocessing import StandardScaler
     scaler = StandardScaler()
-    scaler.fit(np.zeros((10, 16)))
+    scaler.fit(np.zeros((10, len(FEATURE_NAMES))))
     clf = RandomForestClassifier()
-    clf.fit(np.zeros((10, 16)), ["exoplanet_transit"] * 5 + ["stellar_variability_or_other"] * 5)
+    clf.fit(np.zeros((10, len(FEATURE_NAMES))), ["exoplanet_transit"] * 5 + ["stellar_variability_or_other"] * 5)
     
     wrapper = TransitLensClassifier(model=clf, scaler=scaler, classes=["exoplanet_transit", "stellar_variability_or_other"])
     with open(models_dir / "final_classifier.pkl", "wb") as f:

@@ -311,6 +311,7 @@ class TestThresholdChanges:
         cfg = _load_rule_config()
         modified = copy.deepcopy(cfg)
         modified["classification"]["depth_threshold_eb"] = 0.20
+        modified["ml_classifier"]["enabled"] = False
 
         config_path = str(tmp_path / "rule_config_modified.yaml")
         with open(config_path, "w") as f:

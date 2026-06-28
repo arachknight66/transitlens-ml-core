@@ -1,0 +1,89 @@
+{
+  "training_date": "2026-06-28 10:02:59",
+  "random_seed": 42,
+  "model_type": "CalibratedXgboost",
+  "label_mode": "four_class",
+  "trained_classes": [
+    "exoplanet_transit",
+    "eclipsing_binary",
+    "blend_contamination",
+    "stellar_variability_or_other",
+    "review_required"
+  ],
+  "production_eligible": false,
+  "is_calibrated": true,
+  "sufficiency_notes": "Class 'exoplanet_transit' train count 3 < 20; Class 'exoplanet_transit' val count 1 < 5; Class 'exoplanet_transit' test count 1 < 10; Class 'eclipsing_binary' train count 0 < 20; Class 'eclipsing_binary' val count 1 < 5; Class 'eclipsing_binary' test count 0 < 10; Class 'blend_contamination' train count 0 < 20; Class 'blend_contamination' val count 0 < 5; Class 'blend_contamination' test count 0 < 10; Class 'stellar_variability_or_other' train count 19 < 20; Class 'stellar_variability_or_other' val count 2 < 5; Class 'stellar_variability_or_other' test count 1 < 10; Class 'review_required' train count 0 < 20; Class 'review_required' val count 0 < 5; Class 'review_required' test count 0 < 10",
+  "archive_hashes": {
+    "TOI_catalog": "7302f42b6af38f7aa1266f0cb314e11f54b0cb08b8468e09160e3794ada69f5f",
+    "TCE_stats": "d432b93dccd9759965a998df1eb225e3fb71de66510617ac85e461fa931c4a17"
+  },
+  "label_policy_version": "1.0.0",
+  "preprocessing_config": {
+    "sigma_upper": 5.0,
+    "sigma_lower": 50.0,
+    "max_sigma_iter": 3,
+    "detrend_method": "running_median",
+    "detrend_window_days": 1.5,
+    "detrend_poly_degree": 2,
+    "gap_threshold_factor": 5.0,
+    "min_points": 500,
+    "min_time_span_days": 5.0,
+    "min_fraction_retained": 0.8
+  },
+  "aperture_photometry_version": "connected_threshold_v1.0",
+  "cutout_size_pixels": 15,
+  "train_tic_ids": [
+    172900988,
+    295741342,
+    123573708,
+    149540525,
+    170672140,
+    260507500,
+    169420094,
+    192846995,
+    400799224,
+    293939752,
+    300291839,
+    317136191,
+    435916016,
+    464838129,
+    43729491,
+    459991770,
+    237913194,
+    25155310,
+    307210830,
+    237949640,
+    279510954
+  ],
+  "sectors_trained": [
+    1,
+    29,
+    47,
+    65,
+    78,
+    87,
+    98
+  ],
+  "package_versions": {
+    "numpy": "2.4.6",
+    "pandas": "2.3.3",
+    "scipy": "1.18.0",
+    "sklearn": "1.9.0",
+    "astropy": "8.0.0",
+    "astroquery": "0.4.11",
+    "lightkurve": "2.6.0",
+    "joblib": "1.5.3",
+    "tenacity": "9.1.4"
+  },
+  "dataset_sizes": {
+    "train": 22,
+    "val": 4,
+    "test": 2
+  },
+  "metrics": {
+    "test_accuracy": 0.5,
+    "test_macro_f1": 0.13333333333333333,
+    "ece": 0.18899189108138403,
+    "brier_score": 0.6928845602896035
+  }
+}

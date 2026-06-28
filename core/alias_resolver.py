@@ -55,10 +55,18 @@ def resolve_aliases(time, flux, detected_period, detected_t0, detected_duration,
     secondary_flux = flux[in_transit_secondary]
     primary_flux = flux[in_transit_primary]
     
+    sec_depth = 0.0
+    secondary_eclipse_significance = 0.0
     if len(secondary_flux) > 5 and len(out_flux) > 0:
         med_out = np.median(out_flux)
         med_sec = np.median(secondary_flux)
         sec_depth = float(med_out - med_sec)
+        
+        # Express with uncertainty: compute z-score
+        # std of median: local_noise * sqrt(pi / (2 * N))
+        sigma_sec = local_noise * np.sqrt(np.pi / 2.0 * (1.0 / len(secondary_flux)))
+        if sigma_sec > 0:
+            secondary_eclipse_significance = float(sec_depth / sigma_sec)
         
         # Check if secondary eclipse is significant (e.g. > 3.0 * noise)
         if sec_depth > 3.0 * local_noise and sec_depth > 0.0002:
@@ -87,10 +95,17 @@ def resolve_aliases(time, flux, detected_period, detected_t0, detected_duration,
     even_flux = flux[even_mask]
     
     odd_even_delta = 0.0
+    odd_even_significance = 0.0
     if len(odd_flux) > 5 and len(even_flux) > 5:
         med_odd = np.median(odd_flux)
         med_even = np.median(even_flux)
         odd_even_delta = float(abs(med_odd - med_even))
+        
+        # Express with uncertainty: compute z-score of difference of medians
+        # std of median difference: local_noise * sqrt(pi / 2 * (1 / N_odd + 1 / N_even))
+        sigma_delta = local_noise * np.sqrt(np.pi / 2.0 * (1.0 / len(odd_flux) + 1.0 / len(even_flux)))
+        if sigma_delta > 0:
+            odd_even_significance = float(odd_even_delta / sigma_delta)
         
         # If odd and even depth delta is significant, this suggests an eclipsing binary
         # and the period is likely double the detected period (meaning we missed the secondary eclipse)
@@ -106,6 +121,8 @@ def resolve_aliases(time, flux, detected_period, detected_t0, detected_duration,
         "alias_warning": alias_warning,
         "alias_type": alias_type,
         "odd_even_delta": odd_even_delta,
+        "odd_even_significance": odd_even_significance,
         "secondary_eclipse_detected": secondary_eclipse_detected,
-        "secondary_eclipse_depth": secondary_eclipse_depth
+        "secondary_eclipse_depth": secondary_eclipse_depth,
+        "secondary_eclipse_significance": secondary_eclipse_significance,
     }

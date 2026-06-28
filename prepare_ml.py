@@ -153,7 +153,7 @@ def generate_split_real_only(
         if manifest_status == "failed":
             split_rows.append({
                 "target_id": tid,
-                "tic_id": int(target["tic_id"]),
+                "tic_id": int(target["tic_id"]) if pd.notnull(target.get("tic_id")) else 0,
                 "sector": int(target["sector"]) if pd.notnull(target.get("sector")) else 78,
                 "class_label": class_label,
                 "split": split_name,
@@ -170,7 +170,7 @@ def generate_split_real_only(
         if pd.isnull(processed_path) or not processed_path or not os.path.exists(processed_path):
             split_rows.append({
                 "target_id": tid,
-                "tic_id": int(target["tic_id"]),
+                "tic_id": int(target["tic_id"]) if pd.notnull(target.get("tic_id")) else 0,
                 "sector": int(target["sector"]) if pd.notnull(target.get("sector")) else 78,
                 "class_label": class_label,
                 "split": split_name,
@@ -189,8 +189,8 @@ def generate_split_real_only(
             flux_arr = data["flux"]
             
             meta = {
-                "sector": int(target.get("sector", 78)),
-                "tic_id": int(target.get("tic_id", 0)),
+                "sector": int(target.get("sector", 78)) if pd.notnull(target.get("sector")) else 78,
+                "tic_id": int(target.get("tic_id", 0)) if pd.notnull(target.get("tic_id")) else 0,
                 "target_id": tid
             }
             if "quality" in data:
@@ -208,7 +208,7 @@ def generate_split_real_only(
             logger.error("Failed to load NPZ for target %s: %s", tid, exc)
             split_rows.append({
                 "target_id": tid,
-                "tic_id": int(target["tic_id"]),
+                "tic_id": int(target["tic_id"]) if pd.notnull(target.get("tic_id")) else 0,
                 "sector": int(target["sector"]) if pd.notnull(target.get("sector")) else 78,
                 "class_label": class_label,
                 "split": split_name,
@@ -235,8 +235,8 @@ def generate_split_real_only(
                 try:
                     row_feat = fut.result()
                     row_feat["split"] = split_name
-                    row_feat["tic_id"] = int(target["tic_id"])
-                    row_feat["sector"] = int(target["sector"])
+                    row_feat["tic_id"] = int(target["tic_id"]) if pd.notnull(target.get("tic_id")) else 0
+                    row_feat["sector"] = int(target["sector"]) if pd.notnull(target.get("sector")) else 78
                     
                     row_feat["true_period_days"] = target.get("period_days", 0.0)
                     row_feat["true_duration_days"] = target.get("duration_days", 0.0)
@@ -273,7 +273,30 @@ def main():
     output_dir.mkdir(parents=True, exist_ok=True)
     
     logger.info(f"Running in --real-only mode. Loading manifest: {args.manifest}")
-    manifest_df = pd.read_parquet(args.manifest)
+    manifest_path = Path(args.manifest)
+    if manifest_path.suffix.lower() == ".csv":
+        manifest_df = pd.read_csv(manifest_path)
+        # Map fields from processed lightcurves manifest.csv to match expected parquet schema
+        if "processed_path" not in manifest_df.columns and "lightcurve_path" in manifest_df.columns:
+            manifest_df["processed_path"] = manifest_df["lightcurve_path"].apply(
+                lambda p: str(manifest_path.parent / p) if pd.notnull(p) else ""
+            )
+        if "period_days" not in manifest_df.columns and "true_period_days" in manifest_df.columns:
+            manifest_df["period_days"] = manifest_df["true_period_days"]
+        if "duration_days" not in manifest_df.columns and "true_duration_days" in manifest_df.columns:
+            manifest_df["duration_days"] = manifest_df["true_duration_days"]
+        if "depth_ppm" not in manifest_df.columns and "true_depth" in manifest_df.columns:
+            manifest_df["depth_ppm"] = manifest_df["true_depth"] * 1e6
+        if "download_status" not in manifest_df.columns:
+            manifest_df["download_status"] = "cached"
+        if "tic_id" not in manifest_df.columns:
+            tids = []
+            for tid in manifest_df["target_id"].astype(str):
+                cleaned = "".join(c for c in tid if c.isdigit())
+                tids.append(int(cleaned) if cleaned else hash(tid) % 100000000)
+            manifest_df["tic_id"] = tids
+    else:
+        manifest_df = pd.read_parquet(args.manifest)
     
     downloaded_manifest = manifest_df[manifest_df["download_status"].isin(["downloaded", "cached"])]
     logger.info(f"Loaded {len(downloaded_manifest)} successfully acquired targets from manifest.")

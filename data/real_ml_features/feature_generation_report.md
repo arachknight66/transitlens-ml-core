@@ -1,19 +1,19 @@
 # Feature Generation Report
-Generated on: 2026-06-27 19:23:08
+Generated on: 2026-06-28 09:55:57
 
 ## Summary
 
 | Split | Total Targets | Success Features | Failed | Suspicious | Exoplanet Transit | Stellar Var/Other |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
-| train | 41 | 7 | 1 | 33 | 4 | 3 |
-| val | 14 | 6 | 0 | 8 | 4 | 2 |
-| test | 10 | 2 | 0 | 8 | 0 | 2 |
+| train | 22 | 22 | 0 | 0 | 3 | 19 |
+| val | 4 | 4 | 0 | 0 | 1 | 2 |
+| test | 2 | 2 | 0 | 0 | 1 | 1 |
 
 ## Configuration
 - Real-only mode: True
 - Resume: False
 - Include Suspicious: False
-- Feature count: 16 features
+- Feature count: 18 features
 
 ## Checked Features List
 
@@ -33,3 +33,5 @@ Generated on: 2026-06-27 19:23:08
 - `centroid_shift`
 - `crowding_metric`
 - `gaia_neighbor_count`
+- `odd_even_significance`
+- `secondary_eclipse_significance`

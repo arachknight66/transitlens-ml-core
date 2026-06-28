@@ -1,0 +1,201 @@
+# models/rule_config.yaml
+# -----------------------
+# Rule-based classifier thresholds for TransitLens ML core.
+#
+# ALL classification decision boundaries live here.
+# No threshold is hardcoded in Python — change a value here and the
+# classification behaviour changes without touching any .py file.
+#
+# Sections:
+#   detection       — BLS power and SNR gates (mirrors bls_detector config)
+#   classification  — rule-based decision tree thresholds
+#   confidence      — per-class component weights and scoring conditions
+#   ml_classifier   — optional ML model settings
+
+# ── Detection gate ──────────────────────────────────────────────────────────
+detection:
+  # Minimum normalised BLS power for a candidate to be considered real.
+  # Below this value → noise_or_other without further checks.
+  bls_power_threshold: 0.15
+
+  # Minimum signal-to-noise ratio (depth / local_noise).
+  # Below this value → noise_or_other without further checks.
+  snr_threshold: 5.0
+
+# ── Classification decision tree ────────────────────────────────────────────
+classification:
+  # Primary depth discriminator.
+  # Physical basis: no transiting planet can block more than ~3% of a
+  # Sun-like star's light. Any deeper signal is stellar in origin.
+  # depth > this value → eclipsing_binary immediately.
+  depth_threshold_eb: 0.050
+
+  # Odd/even transit depth asymmetry threshold.
+  # Physical basis: an eclipsing binary produces alternating primary and
+  # secondary eclipses with different depths (different stellar temperatures).
+  # A planet produces identical transits every orbit.
+  # |depth_odd - depth_even| > this value → eclipsing_binary.
+  odd_even_threshold: 0.020
+
+  # V-shape score threshold.
+  # Physical basis: planetary transits are flat-bottomed (planet disc crossing
+  # a stellar disc). Eclipsing binaries often show V-shaped profiles from
+  # grazing eclipses or limb-darkening effects.
+  # v_shape_score > this value → eclipsing_binary.
+  v_shape_threshold: 0.40
+
+  # Depth-to-noise ratio threshold.
+  # Below this value the transit signal cannot be confidently distinguished
+  # from noise, even if BLS and SNR passed the detection gate.
+  # depth_to_noise_ratio < this value → stellar_variability_or_other.
+  depth_snr_threshold: 5.0
+
+  # Stellar crowding metric threshold.
+  # Ratio of target flux to total flux in aperture. Below 0.8 implies high blend contamination.
+  crowding_threshold: 0.80
+
+  # Mid-transit centroid shift threshold (in pixels).
+  # Shift above 0.015 suggests nearby background eclipsing binary.
+  centroid_shift_threshold: 0.015
+
+# ── Confidence score component weights ──────────────────────────────────────
+# Each predicted class has a set of components. Each component contributes
+# a partial score from 0.0 to 1.0. The final confidence is the weighted mean.
+# Partial scoring: components that do not fully satisfy their threshold
+# receive a fractional score proportional to proximity to the threshold.
+confidence:
+
+  exoplanet_transit:
+    components:
+      # Strength of the periodic BLS signal
+      - name: bls_power
+        weight: 0.30
+        feature: bls_power
+        direction: above   # higher is better
+        full_score_threshold: 0.40
+
+      # Transit clearly above the noise floor
+      - name: depth_snr
+        weight: 0.25
+        feature: depth_to_noise_ratio
+        direction: above
+        full_score_threshold: 10.0
+
+      # Odd and even transits have the same depth (not an EB)
+      - name: odd_even_consistency
+        weight: 0.20
+        feature: odd_even_depth_delta
+        direction: below   # lower is better (want near 0)
+        full_score_threshold: 0.010
+
+      # Transit profile is flat-bottomed (not V-shaped)
+      - name: v_shape_absence
+        weight: 0.15
+        feature: v_shape_score
+        direction: below
+        full_score_threshold: 0.15
+
+      # Multiple transit events confirmed
+      - name: transit_count
+        weight: 0.10
+        feature: transit_count
+        direction: above
+        full_score_threshold: 5.0
+
+  eclipsing_binary:
+    components:
+      # Depth clearly in the stellar range (primary discriminator).
+      # BLS scipy fallback under-estimates true depth (measures mean in-transit
+      # deficit, not box depth), so threshold is set conservatively at 0.05.
+      # A depth of 0.085 measured by scipy from an 18%-deep EB is still >>0.05.
+      - name: depth_magnitude
+        weight: 0.40
+        feature: depth
+        direction: above
+        full_score_threshold: 0.05
+
+      # Strong, confident periodic signal
+      - name: bls_power
+        weight: 0.20
+        feature: bls_power
+        direction: above
+        full_score_threshold: 0.40
+
+      # Signal clearly above noise — high SNR is a key EB indicator
+      - name: depth_snr
+        weight: 0.20
+        feature: depth_to_noise_ratio
+        direction: above
+        full_score_threshold: 20.0
+
+      # V-shaped transit profile (0.0 for perfect box transits — secondary)
+      - name: v_shape_presence
+        weight: 0.10
+        feature: v_shape_score
+        direction: above
+        full_score_threshold: 0.50
+
+      # Depth alternation between odd and even transits (secondary)
+      - name: odd_even_asymmetry
+        weight: 0.10
+        feature: odd_even_depth_delta
+        direction: above
+        full_score_threshold: 0.040
+
+  blend_contamination:
+    components:
+      # Crowding metric (low value -> high blending)
+      - name: crowding
+        weight: 0.40
+        feature: crowding_metric
+        direction: below
+        full_score_threshold: 0.70
+
+      # Centroid shift during transit (high value -> off-target source)
+      - name: centroid_shift
+        weight: 0.40
+        feature: centroid_shift
+        direction: above
+        full_score_threshold: 0.020
+
+      # Number of Gaia neighbor stars in aperture
+      - name: neighbor_stars
+        weight: 0.20
+        feature: gaia_neighbor_count
+        direction: above
+        full_score_threshold: 2.0
+
+  stellar_variability_or_other:
+    components:
+      # Signal-to-noise below detection threshold.
+      # Note: bls_power is normalised to [0,1] within each light curve's
+      # own power spectrum — a noise LC always has bls_power=1.0 at its
+      # own peak, so SNR is the correct primary noise discriminator.
+      - name: low_snr
+        weight: 0.60
+        feature: snr
+        direction: below
+        full_score_threshold: 3.0
+
+      # Depth indistinguishable from noise floor
+      - name: low_depth_snr
+        weight: 0.40
+        feature: depth_to_noise_ratio
+        direction: below
+        full_score_threshold: 3.0
+
+# ── Optional ML classifier ──────────────────────────────────────────────────
+ml_classifier:
+  # Set to false to enforce rule-only restricted classification.
+  enabled: false
+  dev_fallback: false
+  use_rule_fallback_on_disagreement: true
+  production_state: "rule_only_restricted"
+
+  # Which model to use: "rf" (Random Forest) or "xgb" (XGBoost)
+  model_type: "rf"
+
+  # Blend weight: 0.0 = rule-based only, 1.0 = ML only, 0.5 = equal blend.
+  # Priority when disagreement: rule-based prediction is used but disagreement
+  # is noted in the explanation string.
+  blend_weight: 0.0

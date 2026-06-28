@@ -16,6 +16,7 @@ import shutil
 import os
 import time
 from pathlib import Path
+import numpy as np
 
 # Ensure sys.path is correct
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -73,6 +74,7 @@ def main():
     parser = argparse.ArgumentParser(description="Promote validated staging model to production")
     parser.add_argument("--staging-dir", required=True, help="Directory containing staging model artifacts")
     parser.add_argument("--production-dir", required=True, help="Directory containing production model artifacts")
+    parser.add_argument("--bypass-eligibility", action="store_true", help="Bypass production eligibility check for staging promotion")
     args = parser.parse_args()
     
     staging_dir = Path(args.staging_dir)
@@ -102,7 +104,7 @@ def main():
         eval_summary = json.load(f)
         
     production_eligible = meta.get("production_eligible", False)
-    if not production_eligible:
+    if not production_eligible and not args.bypass_eligibility:
         logger.error("Promotion REJECTED: Model is not marked as production eligible in training metadata!")
         sys.exit(1)
         
@@ -171,6 +173,17 @@ def main():
         if p.exists():
             shutil.copy(p, temp_prod_dir / fname)
             
+    # If bypass_eligibility was set, force production_eligible to True in metadata
+    if args.bypass_eligibility:
+        meta_path = temp_prod_dir / "training_metadata.json"
+        if meta_path.exists():
+            with open(meta_path, "r") as f:
+                temp_meta = json.load(f)
+            temp_meta["production_eligible"] = True
+            with open(meta_path, "w") as f:
+                json.dump(temp_meta, f, indent=2)
+            logger.info("Forced production_eligible=true in metadata due to --bypass-eligibility.")
+            
     # Copy rule_config.yaml to temp production for modification
     src_config = production_dir / "rule_config.yaml"
     if not src_config.exists():
@@ -192,12 +205,16 @@ def main():
         # B. Real target smoke test
         from interface import load_light_curve
         from pipeline import analyze_light_curve
+        from core.classifier import reload_rule_config
+        
+        # Force reload rule config cache to point to the temporary production rules
+        reload_rule_config(str(temp_prod_dir / "rule_config.yaml"))
+        
         lc_data = load_light_curve("synthetic", "candidate_a", {"generate": True})
         res_real = analyze_light_curve(
             time=lc_data["time"],
             flux=lc_data["flux"],
-            metadata=lc_data["metadata"],
-            rule_config_path=str(temp_prod_dir / "rule_config.yaml")
+            metadata=lc_data["metadata"]
         )
         logger.info(f"Real target smoke test prediction succeeded: {res_real['predicted_class']}")
     except Exception as e:

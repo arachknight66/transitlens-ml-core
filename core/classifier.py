@@ -37,7 +37,7 @@ from core.exceptions import ClassificationError
 logger = logging.getLogger(__name__)
 
 # Canonical allowed class labels
-CLASSES = ("exoplanet_transit", "eclipsing_binary", "blend_contamination", "stellar_variability_or_other")
+CLASSES = ("exoplanet_transit", "eclipsing_binary", "blend_contamination", "stellar_variability_or_other", "review_required")
 
 class TransitLensClassifier:
     """Wrapper class for the final calibrated ML classifier."""
@@ -301,27 +301,68 @@ def classify(
 
     predicted_class = ml_class if ml_class is not None else rule_result.predicted_class
     
-    if ml_enabled and ml_class is not None and not ml_agreement:
-        logger.info(
-            "classifier: ML class '%s' and rule class '%s' disagree.",
-            ml_class, rule_result.predicted_class
+    # ── Check routing to review_required ─────────────────────────────────
+    routing_reason = []
+    
+    if ml_enabled and ml_class is not None:
+        # 1. Disagreement between ML and Rules
+        if not ml_agreement:
+            routing_reason.append(f"ML class '{ml_class}' and rule class '{rule_result.predicted_class}' disagree")
+            
+        # 2. Missing spatial diagnostics (all spatial/blend features at default fallback values)
+        spatial_missing = (
+            features.get("centroid_shift", 0.0) == 0.0 and
+            features.get("crowding_metric", 1.0) == 1.0 and
+            features.get("gaia_neighbor_count", 0) == 0
         )
-        if use_rule_fallback_on_disagreement:
-            logger.info("classifier: falling back to rule-based class '%s' due to disagreement fallback config.", rule_result.predicted_class)
-            predicted_class = rule_result.predicted_class
-
-
-
-    if class_probabilities is None:
-        # Build simulated probabilities from rule confidence
-        from core.confidence import score
-        conf = score(features, predicted_class, rule_config_path=rule_config_path)
-        class_probabilities = {}
-        for cls in CLASSES:
-            if cls == predicted_class:
-                class_probabilities[cls] = float(conf)
-            else:
-                class_probabilities[cls] = float((1.0 - conf) / 3.0)
+        if spatial_missing:
+            routing_reason.append("missing spatial diagnostics (all spatial/blend features at fallback values)")
+            
+        # 3. Out-of-distribution features
+        p = features.get("period_days", 0.0)
+        dur = features.get("duration_days", 0.0)
+        dep = features.get("depth", 0.0)
+        snr = features.get("snr", 0.0)
+        noise = features.get("local_noise", 1.0)
+        v_shape = features.get("v_shape_score", 0.0)
+        
+        ood_reasons = []
+        if p < 0.0 or p > 150.0:
+            ood_reasons.append(f"period={p:.2f}d out of [0, 150]")
+        if dur < 0.0 or dur > 10.0:
+            ood_reasons.append(f"duration={dur:.2f}d out of [0, 10]")
+        if dep < 0.0 or dep > 0.5:
+            ood_reasons.append(f"depth={dep:.4f} out of [0, 0.5]")
+        if snr < 0.0 or snr > 5000.0:
+            ood_reasons.append(f"snr={snr:.1f} out of [0, 5000]")
+        if noise <= 0.0 or noise > 0.5:
+            ood_reasons.append(f"noise={noise:.4f} out of (0, 0.5]")
+        if v_shape < 0.0 or v_shape > 1.0:
+            ood_reasons.append(f"v_shape={v_shape:.2f} out of [0, 1]")
+            
+        if ood_reasons:
+            routing_reason.append(f"out-of-distribution features: {', '.join(ood_reasons)}")
+        
+    if routing_reason:
+        reason_str = " & ".join(routing_reason)
+        logger.info("classifier: routing to 'review_required' due to: %s", reason_str)
+        predicted_class = "review_required"
+        class_probabilities = {cls: 0.0 for cls in CLASSES}
+        class_probabilities["review_required"] = 1.0
+    else:
+        # Build simulated probabilities from rule confidence if not present
+        if class_probabilities is None:
+            from core.confidence import score
+            conf = score(features, predicted_class, rule_config_path=rule_config_path)
+            class_probabilities = {}
+            for cls in CLASSES:
+                if cls == predicted_class:
+                    class_probabilities[cls] = float(conf)
+                else:
+                    class_probabilities[cls] = float((1.0 - conf) / (len(CLASSES) - 1))
+        else:
+            # Ensure "review_required" exists in probabilities and other keys are preserved
+            class_probabilities["review_required"] = 0.0
 
     logger.info(
         "classifier: predicted_class='%s' (ml_class=%s, rule_class=%s, agreement=%s)",

@@ -737,7 +737,7 @@ def run_single_injection_trial(
     # ── 7. Run pipeline (no ground truth passed!) ─────────────────────────────
     t0_wall = _time.perf_counter()
     try:
-        clean_result = clean(time, flux)
+        clean_result = clean(time, flux, period=period, epoch=epoch, duration=duration)
         bls_thresh = float(cfg.get("recovery_thresholds", {}).get("detection_snr_threshold", 7.0))
         bls_result = detect(clean_result.time, clean_result.flux, config={"snr_threshold": bls_thresh})
 

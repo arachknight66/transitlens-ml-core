@@ -33,6 +33,8 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
+import yaml
+
 # Ensure repo root is on python path
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 if str(_REPO_ROOT) not in sys.path:

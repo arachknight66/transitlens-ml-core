@@ -1,0 +1,73 @@
+{
+  "val_metrics": {
+    "accuracy": 0.5,
+    "per_class": {
+      "exoplanet_transit": {
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "support": 1
+      },
+      "eclipsing_binary": {
+        "precision": 0.5,
+        "recall": 1.0,
+        "f1": 0.6666666666666666,
+        "support": 1
+      },
+      "blend_contamination": {
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "support": 0
+      },
+      "stellar_variability_or_other": {
+        "precision": 0.5,
+        "recall": 0.5,
+        "f1": 0.5,
+        "support": 2
+      }
+    },
+    "period_recovery_rate": 0.0,
+    "average_runtime_ms": 6408.768524997868,
+    "total_runtime_s": 25.63507409999147,
+    "mean_period_error_pct": 80.54918902914264,
+    "mean_depth_error_pct": 33.29515576323987,
+    "mean_duration_error_pct": 20.56068483327356
+  },
+  "test_metrics": {
+    "accuracy": 0.5,
+    "per_class": {
+      "exoplanet_transit": {
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0,
+        "support": 1
+      },
+      "eclipsing_binary": {
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "support": 0
+      },
+      "blend_contamination": {
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "support": 0
+      },
+      "stellar_variability_or_other": {
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "support": 1
+      }
+    },
+    "period_recovery_rate": 1.0,
+    "average_runtime_ms": 3830.7304000045406,
+    "total_runtime_s": 7.661460800009081,
+    "mean_period_error_pct": 0.003479532163748605,
+    "mean_depth_error_pct": 2.7769230769230786,
+    "mean_duration_error_pct": 30.0
+  },
+  "overall_period_recovery_pct": 33.33333333333333
+}

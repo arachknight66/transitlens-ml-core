@@ -1,7 +1,7 @@
 {
   "unique_tics": {
-    "train": 7,
-    "val": 6,
+    "train": 22,
+    "val": 4,
     "test": 2
   },
   "overlaps": {

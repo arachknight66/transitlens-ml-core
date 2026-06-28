@@ -1,8 +1,8 @@
 # TransitLens Blend & Contamination Diagnostics Performance Report
 
 ## 1. Executive Summary
-- **Diagnostic Availability Rate**: 33.3%
-- **Centroid Availability Rate**: 33.3%
+- **Diagnostic Availability Rate**: 66.7%
+- **Centroid Availability Rate**: 66.7%
 - **Crowding Availability Rate**: 0.0%
 - **Neighbor Availability Rate**: 0.0%
 - **Blend Classification Precision**: 0.0%
@@ -14,7 +14,7 @@
 | | Predicted Blend | Predicted Non-Blend |
 |---|---|---|
 | **True Blend** | 0 (TP) | 0 (FN) |
-| **True Non-Blend** | 0 (FP) | 3 (TN) |
+| **True Non-Blend** | 0 (FP) | 6 (TN) |
 
 ## 3. False Blend Flags
 Listed below are the clean exoplanet transit targets that were flagged with high blend risk or classified as blend:
