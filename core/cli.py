@@ -23,8 +23,22 @@ from core.run_manager import RunManager
 
 logger = logging.getLogger("transitlens.cli")
 
-# Resolve absolute artifacts path
-ARTIFACTS_DIR = Path.home() / ".gemini" / "antigravity-ide" / "brain" / "5df7e48e-aabe-4f03-b3b1-a52a79d4ad3e"
+# Resolve absolute artifacts path dynamically based on the most recently modified brain directory
+def get_artifacts_dir() -> Path:
+    import os
+    env_id = os.environ.get("TRANSITLENS_CONV_ID")
+    if env_id:
+        return Path.home() / ".gemini" / "antigravity-ide" / "brain" / env_id
+        
+    brain_dir = Path.home() / ".gemini" / "antigravity-ide" / "brain"
+    if brain_dir.exists():
+        dirs = [d for d in brain_dir.iterdir() if d.is_dir() and not d.name.startswith(".")]
+        if dirs:
+            dirs.sort(key=lambda d: d.stat().st_mtime, reverse=True)
+            return dirs[0]
+    return Path.home() / ".gemini" / "antigravity-ide" / "brain" / "8f67cc1e-05b0-457c-ac41-e6e8ed4677b5"
+
+ARTIFACTS_DIR = get_artifacts_dir()
 PHASE8_ARTIFACTS = ARTIFACTS_DIR / "artifacts" / "phase8"
 
 def cmd_validate_config(args):

@@ -33,7 +33,21 @@ from pipeline import analyze_light_curve
 from core.transit_fitting_pipeline import physical_transit_model, trapezoid_transit_model
 
 # Setup outputs directory
-CONV_ID = "5df7e48e-aabe-4f03-b3b1-a52a79d4ad3e"
+# Resolve absolute artifacts path dynamically based on the most recently modified brain directory
+def get_conv_id() -> str:
+    import os
+    env_id = os.environ.get("TRANSITLENS_CONV_ID")
+    if env_id:
+        return env_id
+    brain_dir = Path.home() / ".gemini" / "antigravity-ide" / "brain"
+    if brain_dir.exists():
+        dirs = [d for d in brain_dir.iterdir() if d.is_dir() and not d.name.startswith(".")]
+        if dirs:
+            dirs.sort(key=lambda d: d.stat().st_mtime, reverse=True)
+            return dirs[0].name
+    return "8f67cc1e-05b0-457c-ac41-e6e8ed4677b5"
+
+CONV_ID = get_conv_id()
 ART_DIR = Path(f"C:/Users/arach/.gemini/antigravity-ide/brain/{CONV_ID}/artifacts/phase7")
 ART_DIR.mkdir(parents=True, exist_ok=True)
 (ART_DIR / "plots").mkdir(parents=True, exist_ok=True)

@@ -4,7 +4,7 @@
 - **Overall Period Recovery Rate**: 33.33% (tolerance < 1.0%)
 - **Validation Split Classification Accuracy**: 50.00%
 - **Blind Test Split Classification Accuracy**: 50.00%
-- **Average Pipeline Execution Latency**: 6408.8 ms per target
+- **Average Pipeline Execution Latency**: 7534.1 ms per target
 
 
 ## 2. Classification Performance (Test Split)
