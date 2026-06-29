@@ -438,11 +438,34 @@ def analyze_light_curve(
         except Exception as exc:
             logger.error("pipeline: transit fitting or uncertainty calculation failed: %s", exc)
 
+    # ── Run Phase 2 Diagnostics ──
+    try:
+        from diagnostics import run_diagnostics
+        diag_res = run_diagnostics(
+            time_clean,
+            flux_clean,
+            period=bls_result.best_period,
+            epoch_btjd=epoch_btjd if epoch_btjd is not None else bls_result.best_t0,
+            duration_days=fit_res.get("duration_days") if (fit_res and fit_res.get("duration_days")) else bls_result.best_duration,
+            depth=fit_res.get("depth") if (fit_res and fit_res.get("depth")) else bls_result.best_depth,
+            centroid_x=metadata.get("centroid_x") if metadata else None,
+            centroid_y=metadata.get("centroid_y") if metadata else None,
+            quality=metadata.get("quality") if metadata else None,
+            metadata=metadata,
+            config=cfg
+        )
+    except Exception as exc:
+        logger.error("pipeline: Phase 2 diagnostics execution failed: %s", exc)
+        from diagnostics.contracts import get_default_diagnostics_dict
+        diag_res = get_default_diagnostics_dict()
+
+    if diag_res and diag_res.get("recommended_route"):
+        predicted_class = diag_res["recommended_route"]
+        explanation = explanation + " Phase 2 Vetting: " + diag_res["recommendation_reason"]
+
     from core.classifier import CLASSES
-    class_probabilities = getattr(classification_result, "class_probabilities", None)
-    if class_probabilities is None:
-        class_probabilities = {cls: 0.0 for cls in CLASSES}
-        class_probabilities[predicted_class] = 1.0
+    class_probabilities = {cls: 0.0 for cls in CLASSES}
+    class_probabilities[predicted_class] = 1.0
 
     # ── Stage 8: Assemble result dict ─────────────────────────────────────
     # Generate all plots (enhanced with fitting results)
@@ -529,7 +552,8 @@ def analyze_light_curve(
         "features": {k: round(float(v), 8) for k, v in features.items()},
         # Blend/contamination diagnostics
         "diagnostics": {
-            "blend": blend_diagnostics or _empty_blend_diagnostics(),
+            **diag_res,
+            "blend": diag_res,
         },
         # Human-readable explanation
         "explanation": explanation,
