@@ -134,7 +134,6 @@ def run_secondary_eclipse_search(
     # Evidence flags: secondary detected if significance >= sig_threshold AND delta_bic > 0
     evidence_flag = (best_sig >= sig_threshold) and (delta_bic > 0)
     
-    print(f"\nDEBUG_SEC: best_sig={best_sig}, sig_threshold={sig_threshold}, delta_bic={delta_bic}, evidence_flag={evidence_flag}")
     
     # Verify if secondary depth is too large for a planet (depth ratio > max_planetary_ratio)
     quality = "planetary_consistent"

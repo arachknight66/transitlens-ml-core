@@ -37,7 +37,9 @@ from core.exceptions import ClassificationError
 logger = logging.getLogger(__name__)
 
 # Canonical allowed class labels
-CLASSES = ("exoplanet_transit", "eclipsing_binary", "blend_contamination", "stellar_variability_or_other", "review_required")
+PHYSICAL_CLASSES = ("exoplanet_transit", "eclipsing_binary", "blend_contamination", "stellar_variability_or_other")
+# Classification outcomes include abstention, but probability vectors never do.
+CLASSES = PHYSICAL_CLASSES + ("review_required",)
 
 class TransitLensClassifier:
     """Wrapper class for the final calibrated ML classifier."""
@@ -259,13 +261,11 @@ def classify(
     if rule_result.predicted_class == "stellar_variability_or_other" and any("Stage 1 FAIL" in s for s in rule_result.rule_path):
         logger.info("classifier: candidate failed Stage 1 detection gate — forcing stellar_variability_or_other")
         # Build default probabilities for noise
-        class_probabilities = {cls: 0.0 for cls in CLASSES}
-        class_probabilities["stellar_variability_or_other"] = 1.0
         return ClassificationResult(
             predicted_class="stellar_variability_or_other",
             rule_path=rule_result.rule_path,
             thresholds=rule_result.thresholds,
-            class_probabilities=class_probabilities
+            class_probabilities={}
         )
 
     ml_class = None
@@ -347,22 +347,11 @@ def classify(
         reason_str = " & ".join(routing_reason)
         logger.info("classifier: routing to 'review_required' due to: %s", reason_str)
         predicted_class = "review_required"
-        class_probabilities = {cls: 0.0 for cls in CLASSES}
-        class_probabilities["review_required"] = 1.0
+        # review_required is a routing outcome, never a fifth probability.
     else:
-        # Build simulated probabilities from rule confidence if not present
+        # Rule scores are diagnostics, not calibrated class probabilities.
         if class_probabilities is None:
-            from core.confidence import score
-            conf = score(features, predicted_class, rule_config_path=rule_config_path)
             class_probabilities = {}
-            for cls in CLASSES:
-                if cls == predicted_class:
-                    class_probabilities[cls] = float(conf)
-                else:
-                    class_probabilities[cls] = float((1.0 - conf) / (len(CLASSES) - 1))
-        else:
-            # Ensure "review_required" exists in probabilities and other keys are preserved
-            class_probabilities["review_required"] = 0.0
 
     logger.info(
         "classifier: predicted_class='%s' (ml_class=%s, rule_class=%s, agreement=%s)",
@@ -660,4 +649,4 @@ def _run_ml_classifier(
     predicted_class = wrapper.predict(feature_vec, calibrated=calibrated)
     class_probabilities = wrapper.predict_proba(feature_vec, calibrated=calibrated)
     
-    return predicted_class, class_probabilities
+    return predicted_class, class_probabilities

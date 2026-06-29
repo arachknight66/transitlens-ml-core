@@ -1,0 +1,14 @@
+[
+  "bls_power", "snr", "period_days", "duration_days", "depth", "transit_count",
+  "odd_even_depth_delta", "odd_even_significance", "odd_even_p_value", "v_shape_score",
+  "grazing_probability_proxy", "morphology_fit_quality", "ellipsoidal_amplitude",
+  "ellipsoidal_significance", "reflection_amplitude", "reflection_significance",
+  "beaming_amplitude", "beaming_significance", "centroid_shift_pixels",
+  "centroid_shift_arcsec", "centroid_shift_significance", "centroid_mahalanobis_distance",
+  "centroid_permutation_p_value", "source_target_offset_pixels", "source_target_offset_arcsec",
+  "source_target_offset_significance", "summed_neighbor_flux_ratio",
+  "aperture_weighted_neighbor_flux_ratio", "gaia_neighbor_count", "crowdsap", "flfrcsap",
+  "contamination_fraction", "dilution_corrected_depth", "dilution_corrected_depth_uncertainty",
+  "aperture_depth_slope", "aperture_depth_consistency_chi2",
+  "aperture_depth_consistency_p_value", "eb_risk_score", "blend_risk_score"
+]

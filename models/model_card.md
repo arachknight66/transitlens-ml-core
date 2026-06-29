@@ -9,7 +9,8 @@
 
 ## Parameters & Training Metadata
 - **Label Mode**: `four_class`
-- **Trained Classes**: ('exoplanet_transit', 'eclipsing_binary', 'blend_contamination', 'stellar_variability_or_other', 'review_required')
+- **Trained Classes**: legacy artifact retired; not a valid Phase 3 four-class model
+- **Retirement**: This artifact used dummy padding and treated `review_required` as a class. It is disabled and promotion-ineligible.
 - **Random Seed**: 42
 - **Label Policy Version**: `1.0.0`
 - **Aperture Photometry Version**: `connected_threshold_v1.0`

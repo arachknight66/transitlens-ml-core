@@ -7,11 +7,11 @@
     "exoplanet_transit",
     "eclipsing_binary",
     "blend_contamination",
-    "stellar_variability_or_other",
-    "review_required"
+    "stellar_variability_or_other"
   ],
-  "production_eligible": true,
-  "is_calibrated": true,
+  "production_eligible": false,
+  "is_calibrated": false,
+  "retired_reason": "Legacy artifact trained with dummy class padding and a fifth review_required class; never eligible for Phase 3 promotion.",
   "sufficiency_notes": "Class 'exoplanet_transit' train count 3 < 20; Class 'exoplanet_transit' val count 1 < 5; Class 'exoplanet_transit' test count 1 < 10; Class 'eclipsing_binary' train count 0 < 20; Class 'eclipsing_binary' val count 1 < 5; Class 'eclipsing_binary' test count 0 < 10; Class 'blend_contamination' train count 0 < 20; Class 'blend_contamination' val count 0 < 5; Class 'blend_contamination' test count 0 < 10; Class 'stellar_variability_or_other' train count 19 < 20; Class 'stellar_variability_or_other' val count 2 < 5; Class 'stellar_variability_or_other' test count 1 < 10; Class 'review_required' train count 0 < 20; Class 'review_required' val count 0 < 5; Class 'review_required' test count 0 < 10",
   "archive_hashes": {
     "TOI_catalog": "7302f42b6af38f7aa1266f0cb314e11f54b0cb08b8468e09160e3794ada69f5f",

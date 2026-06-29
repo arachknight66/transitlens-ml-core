@@ -82,6 +82,11 @@ def run_gaia_neighbor_query(
             logger.warning(f"Failed to read Gaia cache file: {e}")
             
     # ── Online Gaia query (Astroquery) ──
+    if not loaded_from_cache and g_config.get("offline_only", False):
+        unavailable["gaia_cache_key"] = cache_key
+        unavailable["gaia_quality"] = "unavailable_cache_miss"
+        return unavailable
+
     if not loaded_from_cache:
         # Check if we should query online
         try:

@@ -84,87 +84,51 @@ def run_diagnostics(
     res["period_days"] = float(period) if period > 0 else None
     res["epoch_btjd"] = float(epoch_btjd) if epoch_btjd > 0 else None
     res["duration_days"] = float(duration_days) if duration_days > 0 else None
+    res["ephemeris_source"] = str(metadata.get("ephemeris_source", "transitlens_bls"))
+    res["ephemeris_quality"] = "detected" if res["ephemeris_mode"] == "detected" else "debug_only"
+    res["diagnostics_version"] = str(cfg.get("General", {}).get("diagnostics_version", "2.0.0"))
     
     if period <= 0 or duration_days <= 0 or len(time) == 0:
         validate_schema(res)
         return res
         
-    # Run individual sub-modules
-    try:
-        # 1. Odd/Even depth analysis
-        oe_res = run_odd_even_analysis(time, flux, period, epoch_btjd, duration_days, cfg)
-        res.update(oe_res)
-        
-        # 2. Secondary eclipse search
-        sec_res = run_secondary_eclipse_search(time, flux, period, epoch_btjd, duration_days, depth, cfg)
-        res.update(sec_res)
-        
-        # 3. Morphology profile fit
-        morph_res = run_morphology_analysis(time, flux, period, epoch_btjd, duration_days, depth, cfg)
-        res.update(morph_res)
-        
-        # 4. Harmonic orbital variability
-        harm_res = run_harmonic_analysis(time, flux, period, epoch_btjd, duration_days, cfg)
-        res.update(harm_res)
-        
-        # 5. Centroid shifts
-        cent_res = run_centroid_analysis(time, flux, period, epoch_btjd, duration_days, centroid_x, centroid_y, quality, cfg)
-        res.update(cent_res)
-        
-        # 6 & 7 & 10. Difference imaging, source localization, and multi-aperture consistency (via TPF path if available)
-        tpf_path = metadata.get("tpf_path")
-        diff_res = run_difference_imaging(tpf_path, period, epoch_btjd, duration_days, cfg)
-        res["difference_image_available"] = diff_res["difference_image_available"]
-        res["difference_image_snr"] = diff_res["difference_image_snr"]
-        res["target_column"] = diff_res["target_column"]
-        res["target_row"] = diff_res["target_row"]
-        res["difference_image_quality"] = diff_res["difference_image_quality"]
-        
-        loc_res = run_source_localization(diff_res, cfg)
-        res.update({k: v for k, v in loc_res.items() if k in res})
-        
-        ma_res = run_multi_aperture_analysis(tpf_path, period, epoch_btjd, duration_days, cfg)
-        res.update(ma_res)
-        
-        # 8. Gaia neighbor check
-        gaia_res = run_gaia_neighbor_query(res["target_id"], metadata.get("ra"), metadata.get("dec"), cfg)
-        res.update(gaia_res)
-        
-        # 9 & 11. Crowding and dilution correction
-        crowd_res = run_crowding_analysis(metadata, cfg)
-        res["crowding_available"] = crowd_res["crowding_available"]
-        res["crowdsap"] = crowd_res["crowdsap"]
-        res["flfrcsap"] = crowd_res["flfrcsap"]
-        res["contamination_fraction"] = crowd_res["contamination_fraction"]
-        res["crowding_evidence_flag"] = crowd_res["crowding_evidence_flag"]
-        
-        dil_res = run_dilution_correction(depth, metadata.get("depth_uncertainty"), crowd_res, cfg)
-        res["observed_depth"] = dil_res["observed_depth"]
-        res["observed_depth_uncertainty"] = dil_res["observed_depth_uncertainty"]
-        res["dilution_corrected_depth"] = dil_res["dilution_corrected_depth"]
-        res["dilution_corrected_depth_uncertainty"] = dil_res["dilution_corrected_depth_uncertainty"]
-        res["correction_factor"] = dil_res["correction_factor"]
-        res["correction_quality"] = dil_res["correction_quality"]
-        
-        # 12. Ephemeris cross-match check
-        ephem_res = run_ephemeris_matching(res["target_id"], period, epoch_btjd, metadata.get("ra"), metadata.get("dec"), cfg)
-        res.update(ephem_res)
-        
-        # 13. Quality controls
-        res["quality_flags"] = audit_observation_quality(time, flux, centroid_x, centroid_y, quality, metadata)
-        
-        # 14. Evidence Aggregation and Vetting Routing
-        agg_res = run_evidence_aggregation(
-            oe_res, sec_res, morph_res, harm_res, cent_res, diff_res, loc_res, gaia_res, crowd_res, ma_res, ephem_res, cfg
-        )
-        res.update(agg_res)
-        
-    except Exception as e:
-        logger.error(f"Error executing diagnostic sub-modules: {e}", exc_info=True)
-        res["recommended_route"] = "review_required"
-        res["recommendation_reason"] = f"unhandled execution failure: {str(e)[:100]}"
+    # Each component fails independently: unavailable evidence must not erase
+    # successful measurements from other diagnostic families.
+    failures = []
+    def safe(name, function):
+        try:
+            return function()
+        except Exception as exc:
+            logger.exception("Phase 2 diagnostic '%s' failed", name)
+            failures.append(f"{name}:{type(exc).__name__}")
+            return {}
+
+    oe_res = safe("odd_even", lambda: run_odd_even_analysis(time, flux, period, epoch_btjd, duration_days, cfg)); res.update(oe_res)
+    sec_res = safe("secondary", lambda: run_secondary_eclipse_search(time, flux, period, epoch_btjd, duration_days, depth, cfg)); res.update(sec_res)
+    morph_res = safe("morphology", lambda: run_morphology_analysis(time, flux, period, epoch_btjd, duration_days, depth, cfg)); res.update(morph_res)
+    harm_res = safe("harmonics", lambda: run_harmonic_analysis(time, flux, period, epoch_btjd, duration_days, cfg)); res.update(harm_res)
+    cent_res = safe("centroid", lambda: run_centroid_analysis(time, flux, period, epoch_btjd, duration_days, centroid_x, centroid_y, quality, cfg)); res.update(cent_res)
+
+    tpf_path = metadata.get("tpf_path")
+    diff_res = safe("difference_image", lambda: run_difference_imaging(tpf_path, period, epoch_btjd, duration_days, cfg))
+    for key in ("difference_image_available", "difference_image_snr", "target_column", "target_row", "difference_image_quality"):
+        if key in diff_res: res[key] = diff_res[key]
+    loc_res = safe("source_localization", lambda: run_source_localization(diff_res, cfg)) if diff_res else {}
+    res.update({k: v for k, v in loc_res.items() if k in res})
+    ma_res = safe("multi_aperture", lambda: run_multi_aperture_analysis(tpf_path, period, epoch_btjd, duration_days, cfg)); res.update(ma_res)
+    gaia_res = safe("gaia", lambda: run_gaia_neighbor_query(res["target_id"], metadata.get("ra"), metadata.get("dec"), cfg)); res.update(gaia_res)
+    crowd_res = safe("crowding", lambda: run_crowding_analysis(metadata, cfg)); res.update({k:v for k,v in crowd_res.items() if k in res})
+    dil_res = safe("dilution", lambda: run_dilution_correction(depth, metadata.get("depth_uncertainty"), crowd_res, cfg)); res.update({k:v for k,v in dil_res.items() if k in res})
+    ephem_res = safe("ephemeris_matching", lambda: run_ephemeris_matching(res["target_id"], period, epoch_btjd, metadata.get("ra"), metadata.get("dec"), cfg)); res.update({k:v for k,v in ephem_res.items() if k in res})
+    res["quality_flags"] = safe("quality", lambda: audit_observation_quality(time, flux, centroid_x, centroid_y, quality, metadata)) or []
+    agg_res = safe("aggregation", lambda: run_evidence_aggregation(
+        oe_res, sec_res, morph_res, harm_res, cent_res, diff_res, loc_res, gaia_res, crowd_res, ma_res, ephem_res, cfg))
+    res.update(agg_res)
+    if failures:
+        res["quality_flags"] = list(res.get("quality_flags", [])) + [f"diagnostic_failure:{item}" for item in failures]
         res["review_required"] = True
-        res["quality_flags"].append("diagnostic_execution_failure")
+        if not res.get("recommendation_reason"):
+            res["recommendation_reason"] = "one or more diagnostics unavailable"
         
     # Convert non-finite floats (NaN/inf) to None for schema compliance
     def clean_nan_to_none(d: dict) -> dict:

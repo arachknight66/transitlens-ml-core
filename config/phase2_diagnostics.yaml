@@ -16,6 +16,21 @@ General:
   permutation_iterations: 100
   confidence_interval_level: 0.95
 
+# Frozen inference-time detector settings. These are the public pipeline's
+# pre-existing detection policy, not thresholds selected from Phase 2 labels.
+BLS:
+  period_min_days: 0.5
+  period_max_days: null
+  n_oversample: 10
+  n_durations: 5
+  duration_min_days: 0.01
+  duration_max_fraction: 0.5
+  bls_power_threshold: 0.15
+  snr_threshold: 5.0
+  min_depth_snr: 0.5
+  alias_check_tolerance: 0.20
+  alias_promote_threshold: 0.90
+
 OddEven:
   minimum_odd_events: 2
   minimum_even_events: 2
@@ -113,6 +128,7 @@ Gaia:
   missing_colour_handling: "average_relation"
   contamination_aperture_radius_arcsec: 42.0 # ~2 pixels
   query_provenance_fields: ["source_id", "ra", "dec", "pmra", "pmdec", "phot_g_mean_mag", "phot_bp_mean_mag", "phot_rp_mean_mag"]
+  offline_only: true
 
 CrowdingDilution:
   crowdsap_valid_range: [0.01, 1.0]

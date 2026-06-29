@@ -480,8 +480,7 @@ def analyze_light_curve(
     from core.classifier import CLASSES
     class_probabilities = getattr(classification_result, "class_probabilities", None)
     if class_probabilities is None:
-        class_probabilities = {cls: 0.0 for cls in CLASSES}
-        class_probabilities[predicted_class] = 1.0
+        class_probabilities = {}
 
     # ── Stage 8: Assemble result dict ─────────────────────────────────────
     # Generate all plots (enhanced with fitting results)
@@ -511,6 +510,8 @@ def analyze_light_curve(
         # Scientific uncertainties and significance
         "bootstrap_fap":             round(bootstrap_fap, 6) if (candidate_detected and bootstrap_fap is not None) else None,
         "class_probabilities":        {cls: round(float(prob), 6) for cls, prob in class_probabilities.items()},
+        "class_probability_status":   "calibrated" if class_probabilities else "unavailable_rule_only",
+        "ml_inference_status":        "available" if class_probabilities else "restricted",
         "period_uncertainty_days":   round(period_uncertainty_days, 8) if (candidate_detected and period_uncertainty_days is not None) else None,
         "duration_uncertainty_days": round(duration_uncertainty_days, 8) if (candidate_detected and duration_uncertainty_days is not None) else None,
         "depth_uncertainty":         round(depth_uncertainty, 8) if (candidate_detected and depth_uncertainty is not None) else None,
@@ -789,12 +790,9 @@ def _error_result(
         "snr": None,
         "transit_count": None,
         "bootstrap_fap": None,
-        "class_probabilities": {
-            "exoplanet_transit": 0.0,
-            "eclipsing_binary": 0.0,
-            "blend_contamination": 0.0,
-            "stellar_variability_or_other": 1.0,
-        },
+        "class_probabilities": {},
+        "class_probability_status": "unavailable_rule_only",
+        "ml_inference_status": "restricted",
         "period_uncertainty_days": None,
         "duration_uncertainty_days": None,
         "depth_uncertainty": None,

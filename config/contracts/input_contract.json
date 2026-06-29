@@ -1,0 +1,10 @@
+{
+  "version": "3.0.0",
+  "grouping_key": "tic_id",
+  "evaluation_unit": "target",
+  "allowed_labels": ["exoplanet_transit", "eclipsing_binary", "blend_contamination", "stellar_variability_or_other"],
+  "required_ephemeris_mode": "detected",
+  "review_required_is_class": false,
+  "synthetic_allowed_in_official_evaluation": false,
+  "unknown_feature_policy": "reject"
+}

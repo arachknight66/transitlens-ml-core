@@ -1,0 +1,76 @@
+experiment:
+  name: transitlens_phase3
+  version: 3.0.0
+  random_seed: 42
+  dataset_version: phase1-1.0.0
+  label_policy_version: 1.1.0
+  diagnostics_version: phase2-1.0.0
+  allowed_classes: [exoplanet_transit, eclipsing_binary, blend_contamination, stellar_variability_or_other]
+  grouping_key: tic_id
+  evaluation_unit: target
+inputs:
+  manifest_dir: ../data/manifests/phase1
+  feature_order: phase2_feature_order.json
+  feature_schema: phase2_feature_schema.json
+outputs:
+  run_dir: phase3/runs
+  registry_dir: phase3/registry
+tabular:
+  enabled: true
+  families: [logistic_regression, random_forest, extra_trees, hist_gradient_boosting]
+  class_weighting: balanced
+  missing_value_policy: train_median_with_indicators
+  feature_selection_policy: frozen_schema_only
+  cross_validation_folds: 5
+  scoring: macro_f1
+timeseries:
+  enabled: true
+  global_view_length: 2001
+  local_view_length: 201
+  input_channels: [normalized_flux, availability_mask]
+  ephemeris_mode: detected
+  empty_bin_policy: zero_with_mask
+  architecture: dual_view_1d_cnn
+  convolution_filters: [16, 32]
+  kernel_sizes: [7, 5]
+  dropout: 0.2
+  optimizer: adam
+  learning_rate: 0.001
+  batch_size: 64
+  maximum_epochs: 100
+  early_stopping_patience: 10
+fusion:
+  enabled: true
+  type: out_of_fold_stacking
+  base_models: [tabular, timeseries]
+  stacking_folds: 5
+  meta_model: logistic_regression
+calibration:
+  methods: [temperature, isotonic]
+  split_policy: validation_only
+  minimum_class_support: 5
+  ece_bins: 15
+uncertainty:
+  entropy_threshold: 0.75
+  maximum_probability_threshold: 0.65
+  ensemble_disagreement_threshold: 0.12
+  ood_method: train_quantile_bounds
+  ood_threshold: 0.001
+  missing_critical_feature_policy: review
+promotion:
+  macro_f1: 0.80
+  planet_precision: 0.80
+  planet_recall: 0.80
+  eb_recall: 0.90
+  blend_recall: 0.80
+  blend_precision: 0.75
+  ece: 0.05
+  minimum_class_support: 1
+  model_card_required: true
+  artifact_integrity_required: true
+inference:
+  registry_path: phase3/registry
+  active_model_pointer: active_model.json
+  fallback_behavior: explicit_rule_only_restricted
+  schema_mismatch_behavior: reject
+  device_policy: cpu

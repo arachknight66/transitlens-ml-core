@@ -187,7 +187,7 @@ confidence:
 # ── Optional ML classifier ──────────────────────────────────────────────────
 ml_classifier:
   # Set to false to enforce rule-only restricted classification.
-  enabled: true
+  enabled: false
   dev_fallback: false
   use_rule_fallback_on_disagreement: false
   production_state: "rule_only_restricted"
