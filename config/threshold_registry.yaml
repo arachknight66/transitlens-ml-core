@@ -1,44 +1,44 @@
-threshold_policy_version: 2.1.1
+threshold_policy_version: 2.2.0
 frozen: true
 selection_splits:
 - train
 - validation
 blind_test_used: false
 ephemeris_mode: detected
-eb_risk_threshold: 0.05
-blend_risk_threshold: 0.8899999999999999
+eb_risk_threshold: 0.5299999999999999
+blend_risk_threshold: 0.05
 development_metrics:
   eb:
-    threshold: 0.05
-    tp: 76
-    fp: 92
-    fn: 399
-    tn: 652
-    precision: 0.4523809523809524
-    recall: 0.16
-    f1: 0.2363919129082426
-    positive_support: 475
-    negative_support: 744
+    threshold: 0.5299999999999999
+    tp: 2210
+    fp: 1433
+    fn: 634
+    tn: 1587
+    precision: 0.6066428767499313
+    recall: 0.7770745428973277
+    f1: 0.6813627254509017
+    positive_support: 2844
+    negative_support: 3020
     precision_95ci:
-    - 0.37901896797822315
-    - 0.5278720293123049
+    - 0.5906754533233319
+    - 0.6223856239661231
     recall_95ci:
-    - 0.12977789660348044
-    - 0.19567753584015024
+    - 0.7614096695245259
+    - 0.7919918960681672
   blend:
-    threshold: 0.8899999999999999
-    tp: 2
-    fp: 2
-    fn: 203
-    tn: 1012
-    precision: 0.5
-    recall: 0.00975609756097561
-    f1: 0.019138755980861243
-    positive_support: 205
-    negative_support: 1014
+    threshold: 0.05
+    tp: 1079
+    fp: 3164
+    fn: 457
+    tn: 1164
+    precision: 0.25430120197973133
+    recall: 0.7024739583333334
+    f1: 0.37342100709465303
+    positive_support: 1536
+    negative_support: 4328
     precision_95ci:
-    - 0.15003570882017148
-    - 0.8499642911798285
+    - 0.2414243547657457
+    - 0.267622556708419
     recall_95ci:
-    - 0.002679507763058954
-    - 0.03486856695002503
+    - 0.6791285214191201
+    - 0.7248091303497373

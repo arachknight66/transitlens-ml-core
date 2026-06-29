@@ -106,6 +106,9 @@ classification:
 # ── Optional ML Classifier ───────────────────────────────────────────────────
 ml_classifier:
   enabled: false
+  prototype_enabled: true
+  prototype_model_path: "phase3_prototype/three_class"
+  prototype_status: "development_restricted"
   model_type: "rf"
   dev_fallback: false
   blend_weight: 0.0

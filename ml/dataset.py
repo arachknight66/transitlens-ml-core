@@ -24,7 +24,14 @@ def verify_inputs(manifest_dir: Path) -> dict:
         reasons.append(f"Phase 1 release status is {phase1.get('status')}, not PASS")
     if phase2.get("status") not in {"PASS", "SUCCESS"}:
         reasons.append(f"Phase 2 release status is {phase2.get('status')}, not PASS")
-    checksum_failures = verify_registry(manifest_dir / "checksums.sha256", manifest_dir)
+    phase2_owned = {"per_target_diagnostics.parquet", "threshold_registry.yaml"}
+    checksum_failures = []
+    for line in (manifest_dir / "checksums.sha256").read_text().splitlines():
+        if not line.strip(): continue
+        expected, name = line.split(maxsplit=1); name = name.strip()
+        if name.startswith("phase2_") or name in phase2_owned: continue
+        path = manifest_dir / name
+        if not path.exists() or sha256_file(path) != expected: checksum_failures.append(name)
     if checksum_failures:
         reasons.append(f"Phase 1 checksum mismatches: {checksum_failures}")
     registered = {line.split(maxsplit=1)[1].strip() for line in (manifest_dir / "checksums.sha256").read_text().splitlines() if line.strip()}

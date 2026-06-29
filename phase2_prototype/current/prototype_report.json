@@ -1,0 +1,287 @@
+{
+  "status": "DEVELOPMENT_ONLY",
+  "phase1": {
+    "status": "PASS",
+    "checks": {
+      "parsed_observations_at_least_20000": true,
+      "raw_checksums_present": true,
+      "processed_checksums_present": true,
+      "target_disjoint": true,
+      "authoritative_provenance": true,
+      "phase1_release_pass": true
+    },
+    "parsed_observations": 27559,
+    "unique_tics": 21734,
+    "phase1_reported_status": "PASS"
+  },
+  "benchmark": {
+    "unique_targets": 6894,
+    "observations": 7651,
+    "target_counts": {
+      "blend_contamination": {
+        "test": 270,
+        "train": 1264,
+        "val": 272
+      },
+      "eclipsing_binary": {
+        "test": 496,
+        "train": 2339,
+        "val": 505
+      },
+      "exoplanet_transit": {
+        "test": 260,
+        "train": 1206,
+        "val": 256
+      },
+      "stellar_variability_or_other": {
+        "test": 4,
+        "train": 18,
+        "val": 4
+      }
+    },
+    "tic_overlap": {
+      "train_validation": 0,
+      "train_test": 0,
+      "validation_test": 0
+    },
+    "excluded_review_and_unlabeled": true,
+    "synthetic_rows": 0
+  },
+  "features": {
+    "status": "DEVELOPMENT_ONLY",
+    "features_count": 6894,
+    "output_dir": "C:\\Users\\arach\\Documents\\Projects\\Transitlens\\transitlens-ml-core\\phase2_prototype\\current",
+    "split_integrity": {
+      "representation": "one_best_observation_per_tic_label_independent_v1",
+      "ephemeris_mode": "detected",
+      "development_only": true,
+      "train_count": 4827,
+      "val_count": 1037,
+      "test_count": 1030,
+      "unique_tics": 6894,
+      "overlaps": {
+        "train_validation": 0,
+        "train_test": 0,
+        "validation_test": 0
+      }
+    },
+    "diagnostic_status": {
+      "success": 5167,
+      "low_snr": 1727
+    }
+  },
+  "threshold_policy": {
+    "threshold_policy_version": "2.2.0",
+    "frozen": true,
+    "selection_splits": [
+      "validation"
+    ],
+    "blind_test_used": false,
+    "ephemeris_mode": "detected",
+    "eb_risk_threshold": 0.5099999999999999,
+    "blend_risk_threshold": 0.4099999999999999,
+    "development_metrics": {
+      "eb": {
+        "threshold": 0.5099999999999999,
+        "tp": 400,
+        "fp": 264,
+        "fn": 105,
+        "tn": 268,
+        "precision": 0.6024096385542169,
+        "recall": 0.7920792079207921,
+        "f1": 0.6843455945252352,
+        "positive_support": 505,
+        "negative_support": 532,
+        "precision_95ci": [
+          0.5646979925438818,
+          0.6389431103763317
+        ],
+        "recall_95ci": [
+          0.7545439391545092,
+          0.8252042575338119
+        ]
+      },
+      "blend": {
+        "threshold": 0.4099999999999999,
+        "tp": 184,
+        "fp": 534,
+        "fn": 88,
+        "tn": 231,
+        "precision": 0.2562674094707521,
+        "recall": 0.6764705882352942,
+        "f1": 0.3717171717171717,
+        "positive_support": 272,
+        "negative_support": 765,
+        "precision_95ci": [
+          0.22568954634665694,
+          0.2894395346040669
+        ],
+        "recall_95ci": [
+          0.6187495341667856,
+          0.7292762893493193
+        ]
+      }
+    }
+  },
+  "evaluation": {
+    "evidence_tier": "real_held_out",
+    "ephemeris_mode": "detected",
+    "targets": 1030,
+    "input_hashes": {
+      "phase2_features_test.parquet": "de6bf8efd3a497efd8d534a69d27aa5c13685799c0aa7a8911b7b17304a5b701",
+      "phase2_feature_metadata.parquet": "7f074bc52ef5f734bc721b1be4a7ed807e0773133a3c9e53d2e07983386da96d",
+      "threshold_registry.yaml": "01a8dc59650944e00a910954e5f84f7647358d79201a799220b83f765a30405e"
+    },
+    "class_support": {
+      "eclipsing_binary": 496,
+      "blend_contamination": 270,
+      "exoplanet_transit": 260,
+      "stellar_variability_or_other": 4
+    },
+    "sector_support": {
+      "1": 94,
+      "2": 42,
+      "3": 14,
+      "4": 25,
+      "5": 23,
+      "6": 26,
+      "7": 21,
+      "8": 25,
+      "9": 34,
+      "10": 27,
+      "11": 21,
+      "12": 25,
+      "13": 21,
+      "14": 57,
+      "15": 17,
+      "16": 12,
+      "17": 10,
+      "18": 19,
+      "19": 12,
+      "20": 12,
+      "21": 8,
+      "22": 7,
+      "23": 5,
+      "24": 2,
+      "25": 1,
+      "26": 2,
+      "27": 43,
+      "28": 12,
+      "29": 3,
+      "33": 6,
+      "34": 8,
+      "35": 5,
+      "36": 7,
+      "37": 2,
+      "39": 8,
+      "40": 7,
+      "41": 1,
+      "42": 5,
+      "43": 2,
+      "44": 5,
+      "46": 1,
+      "48": 1,
+      "49": 1,
+      "52": 1,
+      "53": 1,
+      "56": 5,
+      "57": 3,
+      "58": 4,
+      "59": 2,
+      "60": 2,
+      "61": 19,
+      "62": 10,
+      "63": 8,
+      "64": 5,
+      "65": 7,
+      "66": 9,
+      "67": 1,
+      "68": 2,
+      "69": 1,
+      "70": 6,
+      "71": 1,
+      "74": 4,
+      "75": 4,
+      "76": 1,
+      "77": 5,
+      "78": 171,
+      "79": 34,
+      "80": 1,
+      "81": 4,
+      "83": 1,
+      "84": 1,
+      "86": 4,
+      "87": 12,
+      "88": 2,
+      "89": 2,
+      "92": 4,
+      "94": 1,
+      "96": 1,
+      "97": 2,
+      "98": 3,
+      "99": 1,
+      "102": 5,
+      "103": 1
+    },
+    "eb": {
+      "threshold": 0.5099999999999999,
+      "tp": 399,
+      "fp": 256,
+      "fn": 97,
+      "tn": 278,
+      "precision": 0.6091603053435114,
+      "recall": 0.8044354838709677,
+      "f1": 0.6933101650738488,
+      "positive_support": 496,
+      "negative_support": 534,
+      "precision_95ci": [
+        0.571259415652905,
+        0.6457882024695694
+      ],
+      "recall_95ci": [
+        0.767245004777204,
+        0.836946403060799
+      ]
+    },
+    "blend": {
+      "threshold": 0.4099999999999999,
+      "tp": 173,
+      "fp": 514,
+      "fn": 97,
+      "tn": 246,
+      "precision": 0.25181950509461426,
+      "recall": 0.6407407407407407,
+      "f1": 0.3615464994775339,
+      "positive_support": 270,
+      "negative_support": 760,
+      "precision_95ci": [
+        0.2208022545417901,
+        0.285596896870053
+      ],
+      "recall_95ci": [
+        0.5819054844230047,
+        0.6956272206152363
+      ]
+    },
+    "clean_planet_false_blend_flags": 137,
+    "clean_planet_support": 260,
+    "clean_planet_false_blend_rate": 0.5269230769230769,
+    "review_required": 928,
+    "availability": {
+      "odd_even_available": 561,
+      "secondary_available": 774,
+      "morphology_available": 773,
+      "harmonic_available": 760,
+      "centroid_available": 752,
+      "difference_image_available": 0,
+      "gaia_available": 0,
+      "crowding_available": 773,
+      "multi_aperture_available": 0
+    }
+  },
+  "limitations": [
+    "partial TPF coverage",
+    "Gaia cache unavailable",
+    "not a frozen scientific release"
+  ]
+}

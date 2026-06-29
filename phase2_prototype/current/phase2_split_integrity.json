@@ -1,0 +1,14 @@
+{
+  "representation": "one_best_observation_per_tic_label_independent_v1",
+  "ephemeris_mode": "detected",
+  "development_only": true,
+  "train_count": 4827,
+  "val_count": 1037,
+  "test_count": 1030,
+  "unique_tics": 6894,
+  "overlaps": {
+    "train_validation": 0,
+    "train_test": 0,
+    "validation_test": 0
+  }
+}

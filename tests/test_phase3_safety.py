@@ -58,9 +58,9 @@ def test_dual_views_are_deterministic_and_masked():
 def test_current_frozen_inputs_block_official_training():
     report = verify_inputs(MANIFESTS)
     assert report["status"] == "BLOCKED"
-    assert report["phase1_status"] == "PARTIAL"
+    assert report["phase1_status"] == "PASS"
     assert report["phase2_status"] == "PARTIAL"
-    assert report["rows"] == {"train": 1002, "validation": 217, "test": 210}
+    assert report["rows"] == {"train": 4827, "validation": 1037, "test": 1030}
 
 def test_no_bypass_flags_in_entrypoints():
     combined = (ROOT / "train_model.py").read_text() + (ROOT / "promote_model.py").read_text()

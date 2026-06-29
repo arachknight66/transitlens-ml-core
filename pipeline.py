@@ -482,6 +482,37 @@ def analyze_light_curve(
     if class_probabilities is None:
         class_probabilities = {}
 
+    # Restricted prototype ML runs only after Phase 2 diagnostics exist. It is
+    # deliberately separate from the production registry and remains fail-closed.
+    prototype_result = None
+    prototype_cfg = cfg.get("ml_classifier", {})
+    if candidate_detected and prototype_cfg.get("prototype_enabled", False):
+        try:
+            from pathlib import Path as _Path
+            import pandas as _pd
+            from ml.prototype import PrototypeModel
+            model_path = _Path(__file__).resolve().parent / prototype_cfg.get("prototype_model_path", "phase3_prototype/three_class")
+            prototype_model = PrototypeModel(model_path)
+            row = {}
+            for name in prototype_model.order:
+                value = diag_res.get(name)
+                if value is None:
+                    value = features.get(name)
+                if name == "bls_power": value = bls_result.bls_power_peak
+                elif name == "snr": value = bls_result.snr
+                elif name == "period_days": value = bls_result.best_period
+                elif name == "duration_days": value = bls_result.best_duration
+                elif name == "depth": value = bls_result.best_depth
+                elif name == "alias_warning": value = bls_result.alias_warning
+                row[name] = value
+            prototype_result = prototype_model.predict(_pd.DataFrame([row]))[0]
+            predicted_class = prototype_result["routing_outcome"]
+            class_probabilities = prototype_result["probabilities"]
+            confidence_float = max(class_probabilities.values())
+            explanation += " Restricted prototype ML was applied; review routing remains mandatory when uncertainty or OOD checks fail."
+        except Exception as exc:
+            logger.warning("pipeline: restricted prototype ML unavailable: %s", exc)
+
     # ── Stage 8: Assemble result dict ─────────────────────────────────────
     # Generate all plots (enhanced with fitting results)
     plots = _generate_plots(
@@ -510,8 +541,12 @@ def analyze_light_curve(
         # Scientific uncertainties and significance
         "bootstrap_fap":             round(bootstrap_fap, 6) if (candidate_detected and bootstrap_fap is not None) else None,
         "class_probabilities":        {cls: round(float(prob), 6) for cls, prob in class_probabilities.items()},
-        "class_probability_status":   "calibrated" if class_probabilities else "unavailable_rule_only",
-        "ml_inference_status":        "available" if class_probabilities else "restricted",
+        "class_probability_status":   "prototype_calibrated" if prototype_result else ("calibrated" if class_probabilities else "unavailable_rule_only"),
+        "ml_inference_status":        "development_restricted" if prototype_result else ("available" if class_probabilities else "restricted"),
+        "ml_predicted_class":         prototype_result["predicted_astrophysical_class"] if prototype_result else None,
+        "ml_review_required":         prototype_result["review_required"] if prototype_result else None,
+        "ml_review_reasons":          prototype_result["review_reasons"] if prototype_result else [],
+        "ml_model_id":                prototype_result["model_id"] if prototype_result else None,
         "period_uncertainty_days":   round(period_uncertainty_days, 8) if (candidate_detected and period_uncertainty_days is not None) else None,
         "duration_uncertainty_days": round(duration_uncertainty_days, 8) if (candidate_detected and duration_uncertainty_days is not None) else None,
         "depth_uncertainty":         round(depth_uncertainty, 8) if (candidate_detected and depth_uncertainty is not None) else None,

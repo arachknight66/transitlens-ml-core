@@ -70,12 +70,14 @@ def run_difference_imaging(
                 target_col = float(flux_cube.shape[2] / 2.0)
                 target_row = float(flux_cube.shape[1] / 2.0)
                 
-            # Filter valid frames: finite times and flux and quality == 0
+            # Edge pixels in SPOC TPF cutouts are commonly NaN. A frame is
+            # usable when the science/aperture pixels are mostly finite; do not
+            # reject the whole cadence because an irrelevant edge pixel is NaN.
             valid_frames = np.isfinite(time_btjd) & (quality == 0)
-            valid_cube_mask = np.ones(len(time_btjd), dtype=bool)
-            for i in range(len(time_btjd)):
-                if not np.all(np.isfinite(flux_cube[i, :, :])):
-                    valid_cube_mask[i] = False
+            science_mask = aperture_mask > 0
+            if not science_mask.any():
+                science_mask = np.any(np.isfinite(flux_cube), axis=0)
+            valid_cube_mask = np.mean(np.isfinite(flux_cube[:, science_mask]), axis=1) >= 0.8
             valid_frames = valid_frames & valid_cube_mask
             
             if valid_frames.sum() < 10:
@@ -93,11 +95,11 @@ def run_difference_imaging(
             
             # Perform Stacking (robust mean or median)
             if stack_method == "median":
-                in_stack = np.median(in_stack_cube, axis=0)
-                out_stack = np.median(out_stack_cube, axis=0)
+                in_stack = np.nanmedian(in_stack_cube, axis=0)
+                out_stack = np.nanmedian(out_stack_cube, axis=0)
             else: # robust mean (default)
-                in_stack = np.mean(in_stack_cube, axis=0)
-                out_stack = np.mean(out_stack_cube, axis=0)
+                in_stack = np.nanmean(in_stack_cube, axis=0)
+                out_stack = np.nanmean(out_stack_cube, axis=0)
                 
             # Signed Difference: Out-of-Transit - In-Transit (representing the flux deficit)
             diff_img = out_stack - in_stack
@@ -107,8 +109,10 @@ def run_difference_imaging(
             out_err_cube = flux_err_cube[out_transit_mask]
             
             # Combined variance: var = sum(var_i) / N^2
-            in_var = np.sum(in_err_cube**2, axis=0) / (in_transit_mask.sum()**2)
-            out_var = np.sum(out_err_cube**2, axis=0) / (out_transit_mask.sum()**2)
+            in_n = np.maximum(np.sum(np.isfinite(in_err_cube), axis=0), 1)
+            out_n = np.maximum(np.sum(np.isfinite(out_err_cube), axis=0), 1)
+            in_var = np.nansum(in_err_cube**2, axis=0) / (in_n**2)
+            out_var = np.nansum(out_err_cube**2, axis=0) / (out_n**2)
             diff_err = np.sqrt(in_var + out_var)
             
             # Regularize error to prevent div by zero
@@ -116,7 +120,7 @@ def run_difference_imaging(
             
             # SNR image
             snr_img = diff_img / diff_err
-            max_snr = float(np.max(snr_img))
+            max_snr = float(np.nanmax(snr_img[science_mask]))
             
             quality_flag = "nominal"
             if max_snr < min_snr:

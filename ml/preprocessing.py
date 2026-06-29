@@ -40,7 +40,8 @@ class FrozenPreprocessor:
             "tic_id", "target_id", "observation_id", "sector", "split", "label",
             "canonical_label", "label_strength", "evidence_level", "source_checksum",
             "phase2_diagnostics_version", "feature_schema_version", "ephemeris_mode",
-            "candidate_detected", "source_type",
+            "diagnostics_version", "candidate_detected", "source_type",
+            "diagnostic_status", "diagnostic_failure_reason",
         }]
         if model_like:
             raise ContractError(f"unknown model features: {model_like}")

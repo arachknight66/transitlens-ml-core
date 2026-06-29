@@ -73,8 +73,8 @@ def run_diagnostics(
     
     # Identity and metadata parameters
     res["target_id"] = str(metadata.get("target_id", "unknown"))
-    res["tic_id"] = int(metadata.get("tic_id", 0))
-    res["sector"] = int(metadata.get("sector", 0))
+    res["tic_id"] = int(metadata.get("tic_id") or 0)
+    res["sector"] = int(metadata.get("sector") or 0)
     res["observation_id"] = str(metadata.get("observation_id", "unknown"))
     res["source_product"] = str(metadata.get("fits_filename", ""))
     res["source_checksum"] = str(metadata.get("source_checksum", ""))

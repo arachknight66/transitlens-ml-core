@@ -114,6 +114,12 @@ class AnalyzeResponse(BaseModel):
     # Scientific uncertainties and significance
     bootstrap_fap: Optional[float] = None
     class_probabilities: Optional[dict[str, float]] = None
+    class_probability_status: Optional[str] = None
+    ml_inference_status: Optional[str] = None
+    ml_predicted_class: Optional[str] = None
+    ml_review_required: Optional[bool] = None
+    ml_review_reasons: list[str] = Field(default_factory=list)
+    ml_model_id: Optional[str] = None
     period_uncertainty_days: Optional[float] = None
     duration_uncertainty_days: Optional[float] = None
     depth_uncertainty: Optional[float] = None

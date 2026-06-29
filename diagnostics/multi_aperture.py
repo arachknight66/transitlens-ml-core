@@ -58,21 +58,18 @@ def run_multi_aperture_analysis(
             flux_err_cube = np.array(tpf_data["FLUX_ERR"], dtype=np.float64)
             quality = np.array(tpf_data["QUALITY"], dtype=np.int64)
             
-            # Mask valid points
-            valid = np.isfinite(time) & (quality == 0)
-            for i in range(len(time)):
-                if not np.all(np.isfinite(flux_cube[i, :, :])):
-                    valid[i] = False
-                    
-            if valid.sum() < 20:
-                return unavailable
-                
             # Define 3 apertures: Small, Nominal, Expanded
             # 1. Nominal = pixels in TPF aperture mask with bit value >= 2 (which means used in photometry)
             nominal_mask = (aperture_mask & 2) > 0
             if nominal_mask.sum() == 0:
                 # Fallback: any bit > 0
                 nominal_mask = aperture_mask > 0
+
+            # Require finite science pixels, not finite padded edge pixels.
+            valid = np.isfinite(time) & (quality == 0)
+            valid &= np.mean(np.isfinite(flux_cube[:, nominal_mask]), axis=1) >= 0.8
+            if valid.sum() < 20:
+                return unavailable
                 
             # 2. Small = a subset of nominal mask (e.g. center pixels)
             # Find center of nominal aperture mask
@@ -116,7 +113,7 @@ def run_multi_aperture_analysis(
             # Perform photometry on each aperture
             for mask in aperture_masks:
                 # Sum pixels within mask for each cadence
-                lightcurve = np.sum(flux_cube[:, mask], axis=1)
+                lightcurve = np.nansum(flux_cube[:, mask], axis=1)
                 
                 # Normalize
                 med_oot = robust_median(lightcurve[out_transit_mask])
