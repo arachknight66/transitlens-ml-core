@@ -459,13 +459,29 @@ def analyze_light_curve(
         from diagnostics.contracts import get_default_diagnostics_dict
         diag_res = get_default_diagnostics_dict()
 
-    if diag_res and diag_res.get("recommended_route"):
-        predicted_class = diag_res["recommended_route"]
-        explanation = explanation + " Phase 2 Vetting: " + diag_res["recommendation_reason"]
+    if diag_res:
+        # Add legacy keys for backward compatibility
+        diag_res["neighbor_available"] = diag_res.get("gaia_available", False)
+        diag_res["neighbor_flux_ratio_sum"] = diag_res.get("summed_neighbor_flux_ratio")
+        diag_res["nearest_neighbor_delta_mag"] = diag_res.get("nearest_neighbor_delta_gmag")
+        diag_res["contamination_ratio"] = diag_res.get("contamination_fraction")
+        diag_res["flux_fraction"] = diag_res.get("flfrcsap")
+        diag_res["dilution_factor"] = diag_res.get("correction_factor")
+        diag_res["centroid_shift"] = diag_res.get("centroid_shift_pixels")
+        diag_res["centroid_shift_significance"] = diag_res.get("centroid_shift_significance")
+        diag_res["centroid_shift_points_used"] = diag_res.get("centroid_points_in", 0) + diag_res.get("centroid_points_out", 0)
+        
+        # Merge legacy list representation of flags
+        diag_res["blend_evidence_flags"] = diag_res.get("blend_evidence_flags", [])
+        
+        if diag_res.get("recommendation_reason"):
+            explanation = explanation + " Phase 2 Vetting: " + diag_res["recommendation_reason"]
 
     from core.classifier import CLASSES
-    class_probabilities = {cls: 0.0 for cls in CLASSES}
-    class_probabilities[predicted_class] = 1.0
+    class_probabilities = getattr(classification_result, "class_probabilities", None)
+    if class_probabilities is None:
+        class_probabilities = {cls: 0.0 for cls in CLASSES}
+        class_probabilities[predicted_class] = 1.0
 
     # ── Stage 8: Assemble result dict ─────────────────────────────────────
     # Generate all plots (enhanced with fitting results)

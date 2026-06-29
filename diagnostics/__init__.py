@@ -6,6 +6,7 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 import yaml
+import numpy as np
 
 from diagnostics.contracts import get_default_diagnostics_dict, validate_schema
 from diagnostics.phase_windows import fold_phase, get_event_mask, assign_cycle_numbers, analyze_sector_coverage
@@ -165,6 +166,23 @@ def run_diagnostics(
         res["review_required"] = True
         res["quality_flags"].append("diagnostic_execution_failure")
         
+    # Convert non-finite floats (NaN/inf) to None for schema compliance
+    def clean_nan_to_none(d: dict) -> dict:
+        import math
+        cleaned = {}
+        for k, v in d.items():
+            if isinstance(v, dict):
+                cleaned[k] = clean_nan_to_none(v)
+            elif isinstance(v, list):
+                cleaned[k] = [None if (isinstance(x, (float, np.floating)) and not np.isfinite(x)) else x for x in v]
+            elif isinstance(v, (float, np.floating)) and not np.isfinite(v):
+                cleaned[k] = None
+            else:
+                cleaned[k] = v
+        return cleaned
+
+    res = clean_nan_to_none(res)
+
     # Schema validation verification
     validate_schema(res)
     
