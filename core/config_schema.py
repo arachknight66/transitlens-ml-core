@@ -59,6 +59,9 @@ class MLClassifierSchema(BaseModel):
     blend_weight: float = Field(default=0.0, ge=0.0, le=1.0)
     use_rule_fallback_on_disagreement: bool = Field(default=True)
     production_state: str | None = Field(default=None)
+    prototype_enabled: bool = Field(default=False)
+    prototype_model_path: str = Field(default="phase3_prototype/three_class")
+    prototype_status: str = Field(default="development_restricted")
 
 class PlottingSchema(BaseModel):
     model_config = {"extra": "forbid"}

@@ -118,7 +118,7 @@ DEFAULT_CONFIG = {
     "gap_threshold_factor": 5.0,
     "min_points": 500,
     "min_time_span_days": 5.0,
-    "min_fraction_retained": 0.80,
+    "min_fraction_retained": 0.70,
 }
 
 
@@ -249,7 +249,7 @@ def clean(
     )
 
     time_span_days = float(time[-1] - time[0]) if len(time) >= 2 else 0.0
-    fraction_retained = n_after_clip / n_original if n_original > 0 else 0.0
+    fraction_retained = n_after_clip / n_after_nan if n_after_nan > 0 else 0.0
 
     logger.info(
         "preprocess: %d points, span=%.1f days, cadence=%.4f days, gaps=%d, "

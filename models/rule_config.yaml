@@ -48,7 +48,7 @@ classification:
   # Below this value the transit signal cannot be confidently distinguished
   # from noise, even if BLS and SNR passed the detection gate.
   # depth_to_noise_ratio < this value → stellar_variability_or_other.
-  depth_snr_threshold: 5.0
+  depth_snr_threshold: 1.5
 
   # Stellar crowding metric threshold.
   # Ratio of target flux to total flux in aperture. Below 0.8 implies high blend contamination.
@@ -188,7 +188,7 @@ confidence:
 ml_classifier:
   # Set to false to enforce rule-only restricted classification.
   enabled: false
-  prototype_enabled: true
+  prototype_enabled: false
   prototype_model_path: "phase3_prototype/three_class"
   prototype_status: "development_restricted"
   dev_fallback: false

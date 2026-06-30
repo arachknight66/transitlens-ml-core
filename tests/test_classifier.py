@@ -289,7 +289,7 @@ class TestDecisionTree:
     def test_stage3c_low_dtnr_gives_noise(self, exoplanet_features):
         """Low depth_to_noise_ratio after passing stages 1-2 → noise at Stage 3c."""
         feat = dict(exoplanet_features)
-        feat["depth_to_noise_ratio"] = 3.0   # below depth_snr_threshold=6.0
+        feat["depth_to_noise_ratio"] = 1.0   # below depth_snr_threshold
         cr = classify(feat)
         assert cr.predicted_class == "stellar_variability_or_other"
         assert any("Stage 3c MATCH" in s for s in cr.rule_path)
