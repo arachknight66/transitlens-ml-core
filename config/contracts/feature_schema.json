@@ -1,9 +1,0 @@
-{
-  "version": "phase2-1.0.0",
-  "source": "../../../data/manifests/phase1/phase2_feature_schema.json",
-  "type": "object",
-  "additionalProperties": false,
-  "feature_dtype": "nullable float64",
-  "missing_value_representation": "NaN/null",
-  "order_source": "allowed_features.json"
-}

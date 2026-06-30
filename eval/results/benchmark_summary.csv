@@ -1,4 +1,0 @@
-target_id,n_points,n_iterations,mean_ms,std_ms,p95_ms,preprocess_ms,bls_ms,features_ms,classification_ms,plotting_ms
-candidate_a,18000,5,1324.5,296.5,1777.0,516.2,62.7,5.5,8.8,1322.4
-candidate_b,18000,5,1196.0,39.9,1242.4,456.3,61.4,6.0,0.1,681.6
-candidate_c,18000,5,1192.8,87.1,1308.2,469.5,66.3,7.2,0.2,666.1

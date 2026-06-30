@@ -1,7 +1,0 @@
-[
-  "true_period", "catalog_period", "true_depth", "true_duration", "disposition",
-  "canonical_label", "label", "label_strength", "label_source", "source_catalog",
-  "source_catalogs", "confirmed_planet_flag", "split", "target_id", "tic_id",
-  "observation_id", "toi_id", "eb_id", "benchmark_status", "review_outcome",
-  "manually_curated_result", "test_membership"
-]

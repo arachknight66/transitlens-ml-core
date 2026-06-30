@@ -1,7 +1,0 @@
-target_id,true_label,predicted_class,candidate_detected,confidence,centroid_available,centroid_shift,centroid_shift_significance,crowding_available,crowding_metric,neighbor_available,gaia_neighbor_count,nearest_neighbor_sep_arcsec,nearest_neighbor_delta_mag,blend_risk_score,blend_risk_level,blend_evidence_flags,correct_blend_prediction
-candidate_b,eclipsing_binary,eclipsing_binary,True,0.657445,False,,,False,,False,,,,,unavailable,,True
-TIC-24587971,stellar_variability_or_other,stellar_variability_or_other,True,0.4,True,0.01089479,8.3194,False,,False,,,,1.0,high,"centroid_shift_8.3sigma,strong_centroid_displacement",True
-TIC-261136679,exoplanet_transit,stellar_variability_or_other,True,0.4,True,0.04205875,16.3212,False,,False,,,,1.0,high,"centroid_shift_16.3sigma,strong_centroid_displacement",True
-TIC-671806131,stellar_variability_or_other,eclipsing_binary,True,0.607281,True,0.01618172,2.6058,False,,False,,,,0.52116,medium,,True
-candidate_a,exoplanet_transit,exoplanet_transit,True,0.89242,False,,,False,,False,,,,,unavailable,,True
-TIC-671112678,stellar_variability_or_other,eclipsing_binary,True,0.611796,True,0.03507003,11.8583,False,,False,,,,1.0,high,"centroid_shift_11.9sigma,strong_centroid_displacement",True
