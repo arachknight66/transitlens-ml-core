@@ -76,7 +76,7 @@ bls:
 
   # Minimum signal-to-noise ratio (depth / local_noise) for a detection.
   # Below this → candidate_detected=False.
-  snr_threshold: 5.0
+  snr_threshold: 7.0
 
   # Alias check tolerance: if a harmonic period has power within this fraction
   # of the peak, alias_warning=True is set in the result.
@@ -173,7 +173,7 @@ bls:
 
   # Minimum signal-to-noise ratio (depth / local_noise) for a detection.
   # Below this → candidate_detected=False.
-  snr_threshold: 5.0
+  snr_threshold: 7.0
 
   # Alias check tolerance: if a harmonic period has power within this fraction
   # of the peak, alias_warning=True is set in the result.
@@ -203,14 +203,26 @@ classification:
 # ── Optional ML Classifier ───────────────────────────────────────────────────
 ml_classifier:
   enabled: false
-  prototype_enabled: false
-  prototype_model_path: "phase3_prototype/three_class"
+  prototype_enabled: true
+  prototype_model_path: "../phase3_prototype/three_class"
   prototype_status: "development_restricted"
   model_type: "rf"
   dev_fallback: false
   blend_weight: 0.0
   use_rule_fallback_on_disagreement: true
   production_state: "rule_only_restricted"
+
+# Optional display/feature representation. Detection remains on the cleaned
+# detrended series and every second pass must satisfy preservation gates.
+denoising:
+  enabled: true
+  method: "savgol_segmented_transit_masked"
+  window_points: 7
+  polyorder: 2
+  minimum_noise_reduction: 0.10
+  maximum_depth_attenuation: 0.05
+  maximum_period_change: 0.01
+  maximum_duration_change: 0.10
 
 # ── Plotting ─────────────────────────────────────────────────────────────────
 plotting:

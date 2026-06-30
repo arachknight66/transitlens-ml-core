@@ -57,6 +57,13 @@ class AnalyzeRequest(BaseModel):
         return self
 
 
+class TesscutRequest(BaseModel):
+    tic_id: str
+    sector: Optional[int] = None
+    cutout_size: int = Field(default=15, ge=5, le=31)
+    config: Optional[dict] = None
+
+
 # ---------------------------------------------------------------------------
 # Response sub-models
 # ---------------------------------------------------------------------------
@@ -86,8 +93,13 @@ class PlotsSchema(BaseModel):
     """The 4 diagnostic plots as base64-encoded PNG strings."""
     raw_lightcurve: str = ""
     cleaned_lightcurve: str = ""
+    denoised_lightcurve: str = ""
     periodogram: str = ""
     phase_folded: str = ""
+    aperture_image: str = ""
+    transit_stack: str = ""
+    posterior_corner: str = ""
+    alias_comparison: str = ""
 
 
 # ---------------------------------------------------------------------------
@@ -120,6 +132,9 @@ class AnalyzeResponse(BaseModel):
     ml_review_required: Optional[bool] = None
     ml_review_reasons: list[str] = Field(default_factory=list)
     ml_model_id: Optional[str] = None
+    ml_model_status: Optional[str] = None
+    production_eligible: bool = False
+    vetted_predicted_class: Optional[str] = None
     period_uncertainty_days: Optional[float] = None
     duration_uncertainty_days: Optional[float] = None
     depth_uncertainty: Optional[float] = None
@@ -129,6 +144,12 @@ class AnalyzeResponse(BaseModel):
     # New Phase 7 scientific parameters
     fit_status: Optional[str] = None
     quality_flags: Optional[list[str]] = None
+    source_status: str = "live"
+    source_provenance: dict = Field(default_factory=dict)
+    parser_warnings: list[str] = Field(default_factory=list)
+    processing_stages: list[dict] = Field(default_factory=list)
+    denoising: dict = Field(default_factory=dict)
+    series: dict = Field(default_factory=dict)
     rp_rstar: Optional[float] = None
     rp_rstar_err_lower: Optional[float] = None
     rp_rstar_err_upper: Optional[float] = None
@@ -174,6 +195,7 @@ class AnalyzeResponse(BaseModel):
     uncertainty_method: Optional[str] = None
 
     features: FeaturesSchema = Field(default_factory=FeaturesSchema)
+    diagnostics: dict = Field(default_factory=dict)
     explanation: str = ""
     plots: PlotsSchema = Field(default_factory=PlotsSchema)
 

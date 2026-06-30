@@ -225,6 +225,24 @@ def analyze_light_curve(
             explanation=f"BLS detection failed: {exc}",
         )
 
+    # Optional second representation. The initial BLS result above remains the
+    # scientific detection authority; transit windows are protected before the
+    # conservative second pass is evaluated against preservation gates.
+    try:
+        from core.denoise import denoise
+        denoise_result = denoise(
+            time_clean,
+            flux_clean,
+            bls_result,
+            config=cfg.get("denoising", {}),
+            detector=lambda t, f: detect(t, f, config=bls_cfg),
+        )
+        flux_denoised = denoise_result.flux
+    except Exception as exc:
+        logger.warning("pipeline: denoising unavailable; cleaned series retained: %s", exc)
+        flux_denoised = flux_clean.copy()
+        denoise_result = None
+
     # ── Stage 3: Feature Extraction ───────────────────────────────────────
     try:
         feature_cfg = cfg.get("features", {})
@@ -448,9 +466,9 @@ def analyze_light_curve(
             epoch_btjd=epoch_btjd if epoch_btjd is not None else bls_result.best_t0,
             duration_days=fit_res.get("duration_days") if (fit_res and fit_res.get("duration_days")) else bls_result.best_duration,
             depth=fit_res.get("depth") if (fit_res and fit_res.get("depth")) else bls_result.best_depth,
-            centroid_x=metadata.get("centroid_x") if metadata else None,
-            centroid_y=metadata.get("centroid_y") if metadata else None,
-            quality=metadata.get("quality") if metadata else None,
+            centroid_x=np.asarray(metadata.get("centroid_x")) if metadata and metadata.get("centroid_x") is not None else None,
+            centroid_y=np.asarray(metadata.get("centroid_y")) if metadata and metadata.get("centroid_y") is not None else None,
+            quality=np.asarray(metadata.get("quality"), dtype=np.int64) if metadata and metadata.get("quality") is not None else None,
             metadata=metadata,
             config=cfg
         )
@@ -506,37 +524,41 @@ def analyze_light_curve(
                 elif name == "alias_warning": value = bls_result.alias_warning
                 row[name] = value
             prototype_result = prototype_model.predict(_pd.DataFrame([row]))[0]
-            predicted_class = prototype_result["routing_outcome"]
             class_probabilities = prototype_result["probabilities"]
-            confidence_float = max(class_probabilities.values())
-            explanation += " Restricted prototype ML was applied; review routing remains mandatory when uncertainty or OOD checks fail."
+            explanation += (
+                " Restricted calibrated prototype ML ranked the three dip-producing "
+                "interpretations; the final class remains physics-vetted and review routing "
+                "is mandatory when uncertainty or OOD checks fail."
+            )
         except Exception as exc:
             logger.warning("pipeline: restricted prototype ML unavailable: %s", exc)
 
-    # Special overrides for famously known non-transiting exoplanets (e.g. Proxima Centauri b)
-    try:
-        clean_target_id = str(target_id).upper().replace("TIC", "").replace("-", "").strip()
-        clean_target_id = "".join(clean_target_id.split())
-        KNOWN_NON_TRANSITING = {
-            "388857263": {
-                "name": "Proxima Centauri b",
-                "desc": "Proxima Centauri b is a famous terrestrial exoplanet orbiting within the habitable zone of Proxima Centauri. However, it was discovered via radial velocity and does not transit its host star from our perspective on Earth. As a result, its TESS light curve exhibits only stellar variability and instrumental/photon noise, and does not show any periodic transit dips."
-            },
-            "347493214": {
-                "name": "51 Pegasi b",
-                "desc": "51 Pegasi b is the first exoplanet discovered orbiting a main-sequence star. It is a hot Jupiter discovered via radial velocity and does not transit its host star. Its light curve shows only noise and stellar activity."
-            },
-            "317133379": {
-                "name": "Barnard's Star b",
-                "desc": "Barnard's Star b is a super-Earth exoplanet candidate orbiting Barnard's Star. It does not transit its host star, meaning its light curve does not exhibit any transit signals."
-            }
+    # Exactly four canonical probabilities are always returned. The restricted
+    # model ranks only the three dip-producing classes; the hierarchical
+    # no-detection gate owns the fourth class.
+    if not candidate_detected:
+        class_probabilities = {
+            "exoplanet_transit": 0.0,
+            "eclipsing_binary": 0.0,
+            "blend_contamination": 0.0,
+            "stellar_variability_or_other": 1.0,
         }
-        if clean_target_id in KNOWN_NON_TRANSITING:
-            override_info = KNOWN_NON_TRANSITING[clean_target_id]
-            predicted_class = "stellar_variability_or_other"
-            explanation = f"Note on {override_info['name']}: {override_info['desc']} " + explanation
-    except Exception as exc:
-        logger.warning("pipeline: failed applying known non-transiting override: %s", exc)
+    elif prototype_result:
+        class_probabilities = {
+            "exoplanet_transit": float(class_probabilities.get("exoplanet_transit", 0.0)),
+            "eclipsing_binary": float(class_probabilities.get("eclipsing_binary", 0.0)),
+            "blend_contamination": float(class_probabilities.get("blend_contamination", 0.0)),
+            "stellar_variability_or_other": 0.0,
+        }
+    else:
+        class_probabilities = {name: float(name == predicted_class) for name in (
+            "exoplanet_transit", "eclipsing_binary", "blend_contamination", "stellar_variability_or_other"
+        )}
+    probability_total = sum(class_probabilities.values())
+    if probability_total <= 0:
+        class_probabilities["stellar_variability_or_other"] = 1.0
+        probability_total = 1.0
+    class_probabilities = {key: value / probability_total for key, value in class_probabilities.items()}
 
     # ── Stage 8: Assemble result dict ─────────────────────────────────────
     # Generate all plots (enhanced with fitting results)
@@ -549,13 +571,31 @@ def analyze_light_curve(
         target_id=target_id,
         cfg=cfg,
         fit_result=fit_res,
+        flux_denoised=flux_denoised,
+        metadata=metadata or {},
     )
     processing_time_ms = (_time.perf_counter() - wall_start) * 1000
+    def _series_payload(t, f, limit=2500):
+        t = np.asarray(t, dtype=float)
+        f = np.asarray(f, dtype=float)
+        if len(t) > limit:
+            index = np.linspace(0, len(t) - 1, limit, dtype=int)
+            t, f = t[index], f[index]
+        return {"time": t.tolist(), "flux": f.tolist()}
+
+    denoising_metrics = denoise_result.metrics() if denoise_result is not None else {
+        "applied": False,
+        "accepted": False,
+        "method": "unavailable",
+        "rejection_reasons": ["Denoising stage was unavailable; cleaned/detrended flux retained."],
+        "detection_series": "cleaned_detrended",
+    }
 
     result = {
         "target_id": target_id,
         "candidate_detected": candidate_detected,
         "predicted_class": predicted_class,
+        "vetted_predicted_class": predicted_class,
         "confidence": round(confidence_float, 6),
         # Top-level detection parameters (null when no candidate)
         "period_days":    round(bls_result.best_period, 6)   if candidate_detected else None,
@@ -572,6 +612,8 @@ def analyze_light_curve(
         "ml_review_required":         prototype_result["review_required"] if prototype_result else None,
         "ml_review_reasons":          prototype_result["review_reasons"] if prototype_result else [],
         "ml_model_id":                prototype_result["model_id"] if prototype_result else None,
+        "ml_model_status":            prototype_result["model_status"] if prototype_result else "unavailable",
+        "production_eligible":        False,
         "period_uncertainty_days":   round(period_uncertainty_days, 8) if (candidate_detected and period_uncertainty_days is not None) else None,
         "duration_uncertainty_days": round(duration_uncertainty_days, 8) if (candidate_detected and duration_uncertainty_days is not None) else None,
         "depth_uncertainty":         round(depth_uncertainty, 8) if (candidate_detected and depth_uncertainty is not None) else None,
@@ -636,6 +678,16 @@ def analyze_light_curve(
         "explanation": explanation,
         # Diagnostic plots (base64 PNG strings)
         "plots": plots,
+        "denoising": denoising_metrics,
+        "series": {
+            "raw": _series_payload(time, flux),
+            "cleaned_detrended": _series_payload(time_clean, flux_clean),
+            "denoised": _series_payload(time_clean, flux_denoised),
+        },
+        "source_status": (metadata or {}).get("cache_status", "live"),
+        "source_provenance": dict(metadata or {}),
+        "parser_warnings": list((metadata or {}).get("warnings", [])),
+        "processing_stages": [],
         # Provenance
         "processing_time_ms": round(processing_time_ms, 2),
         "pipeline_version": version,
@@ -669,6 +721,8 @@ def _generate_plots(
     target_id: str,
     cfg: dict,
     fit_result: dict | None = None,
+    flux_denoised: np.ndarray | None = None,
+    metadata: dict | None = None,
 ) -> dict:
     """
     Generate diagnostic plots as base64 PNG strings.
@@ -676,8 +730,10 @@ def _generate_plots(
     empty_plots = {
         "raw_lightcurve": "",
         "cleaned_lightcurve": "",
+        "denoised_lightcurve": "",
         "periodogram": "",
         "phase_folded": "",
+        "aperture_image": "",
         "transit_stack": "",
         "posterior_corner": "",
         "alias_comparison": "",
@@ -686,7 +742,7 @@ def _generate_plots(
     try:
         from core.plotter import generate_all
         plot_cfg = cfg.get("plotting", {})
-        return generate_all(
+        plots = generate_all(
             time=time,
             flux=flux,
             time_clean=time_clean,
@@ -696,6 +752,14 @@ def _generate_plots(
             config=plot_cfg,
             fit_result=fit_result,
         )
+        if flux_denoised is not None:
+            from core.plotter import plot_series
+            plots["denoised_lightcurve"] = plot_series(time_clean, flux_denoised, target_id, "Denoised light curve")
+        aperture = (metadata or {}).get("aperture_mask")
+        if aperture is not None:
+            from core.plotter import plot_aperture
+            plots["aperture_image"] = plot_aperture(np.asarray(aperture), target_id)
+        return plots
     except ImportError:
         logger.info("pipeline: matplotlib not available — skipping plots")
         return empty_plots
@@ -850,9 +914,16 @@ def _error_result(
         "snr": None,
         "transit_count": None,
         "bootstrap_fap": None,
-        "class_probabilities": {},
-        "class_probability_status": "unavailable_rule_only",
+        "class_probabilities": {
+            "exoplanet_transit": 0.0,
+            "eclipsing_binary": 0.0,
+            "blend_contamination": 0.0,
+            "stellar_variability_or_other": 1.0,
+        },
+        "class_probability_status": "hierarchical_failure_result",
         "ml_inference_status": "restricted",
+        "production_eligible": False,
+        "vetted_predicted_class": "stellar_variability_or_other",
         "period_uncertainty_days": None,
         "duration_uncertainty_days": None,
         "depth_uncertainty": None,
@@ -866,9 +937,17 @@ def _error_result(
         "plots": {
             "raw_lightcurve": "",
             "cleaned_lightcurve": "",
+            "denoised_lightcurve": "",
             "periodogram": "",
             "phase_folded": "",
+            "aperture_image": "",
         },
+        "denoising": {"applied": False, "accepted": False, "method": "unavailable", "detection_series": "cleaned_detrended"},
+        "series": {},
+        "source_status": "live",
+        "source_provenance": {},
+        "parser_warnings": [],
+        "processing_stages": [],
         "processing_time_ms": round(processing_time_ms, 2),
         "pipeline_version": version,
     }

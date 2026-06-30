@@ -107,6 +107,30 @@ def generate_all(
     return plots
 
 
+def plot_series(time: np.ndarray, flux: np.ndarray, target_id: str, label: str) -> str:
+    """Render an explicitly labelled time-series representation."""
+    cfg = dict(DEFAULT_CONFIG)
+    fig, ax = plt.subplots(figsize=(cfg["figure_width"], cfg["figure_height"]))
+    t_ds, f_ds = _downsample(np.asarray(time), np.asarray(flux), cfg["downsample_points"])
+    ax.plot(t_ds, f_ds, color=_C_SECONDARY, linewidth=0.6, alpha=0.85)
+    ax.set_xlabel("Time (BTJD)")
+    ax.set_ylabel("Normalised Flux")
+    ax.set_title(f"{label} — {target_id}", fontsize=13, fontweight="bold")
+    ax.grid(True, color=_C_GRID, linewidth=0.5)
+    return _fig_to_base64(fig, cfg["dpi"])
+
+
+def plot_aperture(mask: np.ndarray, target_id: str) -> str:
+    """Render the deterministic pixel aperture used for cube extraction."""
+    fig, ax = plt.subplots(figsize=(5, 5))
+    image = ax.imshow(np.asarray(mask, dtype=float), origin="lower", cmap="viridis", interpolation="nearest")
+    ax.set_title(f"TESScut aperture — {target_id}", fontweight="bold")
+    ax.set_xlabel("Pixel column")
+    ax.set_ylabel("Pixel row")
+    fig.colorbar(image, ax=ax, fraction=0.046, label="Aperture membership")
+    return _fig_to_base64(fig, 100)
+
+
 def _safe_run(func, *args) -> str:
     try:
         return func(*args)

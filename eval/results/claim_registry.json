@@ -1,26 +1,64 @@
 {
+  "schema_version": 2,
+  "disclaimer": "TransitLens ranks astrophysical interpretations for follow-up; it does not confirm planets.",
   "claims": [
     {
-      "claim_id": "TL-DET-01",
-      "metric_definition": "Detection Recall for MES/SNR >= 7.1",
-      "value": 0.90,
-      "confidence_interval": "95%",
-      "population": "synthetic_injections",
-      "sample_size": 2000,
-      "dataset_version": "TESS-Gold-v1.0",
-      "run_id": "20260627_053629_run_4a5abdbf",
-      "artifact_checksum": "a8f3b2cd..."
+      "id": "restricted-macro-f1",
+      "value": 0.7331,
+      "sample_size": 1026,
+      "evidence_type": "blind_feature_benchmark",
+      "source": "phase3_prototype/three_class/evaluation_record.json"
     },
     {
-      "claim_id": "TL-FAP-01",
-      "metric_definition": "False Alarm Rate on real-noise controls",
-      "value": 0.01,
-      "confidence_interval": "95%",
-      "population": "real_noise_controls",
-      "sample_size": 1000,
-      "dataset_version": "TESS-Gold-v1.0",
-      "run_id": "20260627_053629_run_4a5abdbf",
-      "artifact_checksum": "b7f5e1cd..."
+      "id": "restricted-ece",
+      "value": 0.0174,
+      "sample_size": 1026,
+      "evidence_type": "blind_feature_benchmark",
+      "source": "phase3_prototype/three_class/evaluation_record.json"
+    },
+    {
+      "id": "restricted-review-rate",
+      "value": 0.5039,
+      "sample_size": 1026,
+      "evidence_type": "blind_feature_benchmark",
+      "source": "phase3_prototype/three_class/evaluation_record.json"
+    },
+    {
+      "id": "injection-overall-recovery",
+      "value": 0.8533,
+      "sample_size": 100,
+      "evidence_type": "synthetic_injection_recovery",
+      "source": "transitlens-ml-core/eval/results/injection_recovery_summary.csv"
+    },
+    {
+      "id": "injection-high-snr-recovery",
+      "value": 0.9692,
+      "sample_size": 65,
+      "parent_sample_size": 100,
+      "evidence_type": "synthetic_injection_recovery",
+      "source": "transitlens-ml-core/eval/results/injection_recovery_summary.csv"
+    },
+    {
+      "id": "control-false-positive-rate",
+      "value": 0.12,
+      "sample_size": 25,
+      "parent_sample_size": 100,
+      "evidence_type": "synthetic_noise_controls",
+      "source": "transitlens-ml-core/eval/results/false_positive_summary.csv"
+    },
+    {
+      "id": "real-tess-pilot",
+      "value": 9,
+      "sample_size": 9,
+      "evidence_type": "pilot_real_tess",
+      "source": "transitlens-ml-core/eval/results/full_evaluation_summary.md"
+    },
+    {
+      "id": "verified-ingestion",
+      "value": 27559,
+      "sample_size": 27559,
+      "evidence_type": "ingestion_evidence_only",
+      "source": "docs/phase1_completion_report.md"
     }
   ]
 }
