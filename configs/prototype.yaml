@@ -1,0 +1,51 @@
+project:
+  name: transitlens-baseline
+  version: 0.1.0
+  seed: 42
+
+data:
+  input_directory: data/processed
+  time_field: time
+  normalized_flux_field: normalized_flux
+  wavelet_flux_field: wavelet_flux
+  metadata_field: metadata
+  model_input_field: wavelet_flux
+  train_fraction: 0.70
+  validation_fraction: 0.15
+  test_fraction: 0.15
+
+model:
+  input_channels: 1
+  convolution_channels: [16, 32]
+  kernel_size: 5
+  pool_size: 2
+
+training:
+  batch_size: 32
+  epochs: 30
+  learning_rate: 0.001
+  weight_decay: 0.0001
+  optimizer_betas: [0.9, 0.999]
+  optimizer_epsilon: 0.00000001
+  early_stopping_patience: 5
+  early_stopping_min_delta: 0.0001
+  scheduler_patience: 2
+  scheduler_factor: 0.5
+  scheduler_min_lr: 0.000001
+  checkpoint_directory: weights
+  best_checkpoint_filename: best_model.pt
+  latest_checkpoint_filename: latest_model.pt
+  experiment_directory: experiments
+  history_filename: training_history.json
+
+evaluation:
+  classification_threshold: 0.5
+  report_directory: experiments
+  report_filename: evaluation_report.json
+
+export:
+  onnx_opset_version: 17
+  sample_length: 1024
+  output_directory: weights
+  pytorch_filename: transitlens_baseline.pt
+  onnx_filename: transitlens_baseline.onnx

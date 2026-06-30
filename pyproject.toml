@@ -1,0 +1,61 @@
+[build-system]
+requires = ["hatchling>=1.27"]
+build-backend = "hatchling.build"
+
+[project]
+name = "transitlens-ml-core"
+version = "0.1.0"
+description = "Machine-learning lifecycle for processed TransitLens light curves."
+readme = "README.md"
+requires-python = ">=3.11,<3.15"
+dependencies = [
+    "numpy>=1.26,<3",
+    "onnx>=1.17,<2",
+    "pydantic>=2.10,<3",
+    "PyYAML>=6.0,<7",
+    "scikit-learn>=1.5,<2",
+    "scipy>=1.14,<2",
+    "tensorboard>=2.18,<3",
+    "torch>=2.5,<3",
+]
+
+[project.optional-dependencies]
+dev = [
+    "black>=24.10,<27",
+    "pytest>=8.3,<10",
+    "pytest-cov>=6.0,<8",
+    "ruff>=0.8,<1",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/transitlens_ml_core"]
+
+[tool.black]
+line-length = 88
+target-version = ["py311"]
+
+[tool.ruff]
+line-length = 88
+target-version = "py311"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "UP", "B", "ANN", "D"]
+ignore = ["D203", "D213"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["D", "ANN201"]
+
+[tool.pytest.ini_options]
+addopts = "--strict-config --strict-markers --cov=transitlens_ml_core --cov-report=term-missing --cov-fail-under=90"
+testpaths = ["tests"]
+pythonpath = ["src"]
+
+[tool.coverage.run]
+branch = true
+
+[tool.coverage.report]
+exclude_also = [
+    "if TYPE_CHECKING:",
+]
+
