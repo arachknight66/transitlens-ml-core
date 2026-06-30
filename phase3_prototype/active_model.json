@@ -1,7 +1,0 @@
-{
-  "model_id": "prototype-20260629T153312Z",
-  "path": "phase3_prototype/three_class",
-  "status": "development_restricted",
-  "production_eligible": false,
-  "classes": ["exoplanet_transit", "eclipsing_binary", "blend_contamination"]
-}

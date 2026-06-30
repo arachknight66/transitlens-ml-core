@@ -1,8 +1,0 @@
-{
-  "tic_overlap": {
-    "train_validation": 0,
-    "train_test": 0,
-    "validation_test": 0
-  },
-  "pass": true
-}

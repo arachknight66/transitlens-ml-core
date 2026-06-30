@@ -1,5 +1,0 @@
-{
-  "minimum_probability": 0.75,
-  "maximum_normalized_entropy": 0.65,
-  "maximum_disagreement": 0.12
-}
