@@ -6,10 +6,13 @@ from transitlens_ml_core.inference.predictor import (
     Predictor,
     load_baseline_checkpoint,
 )
+from transitlens_ml_core.inference.service import app, create_app
 
 __all__ = [
     "PredictionResult",
     "Predictor",
+    "app",
+    "create_app",
     "estimate_confidence",
     "load_baseline_checkpoint",
 ]

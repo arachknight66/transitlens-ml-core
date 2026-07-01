@@ -6,11 +6,11 @@
 
 Current Phase
 
-Phase 7 - Model Export (Completed)
+Public Inference Service - Completed
 
 Next Phase
 
-None - All Prototype Phases Completed
+None - Ready For Platform Integration
 
 ---
 
@@ -32,15 +32,23 @@ Fields
 
 Output
 
-PredictionResult
+PredictionResponse
 
 Fields
+
+- prediction
 
 - probability
 
 - confidence
 
-- predicted_class
+- transit_depth
+
+- transit_duration
+
+- estimated_period
+
+- signal_to_noise_ratio
 
 - model_version
 
@@ -176,6 +184,25 @@ Completed
 
 - Export, inference, evaluation, training, model, dataset, and configuration
   tests (158 passing, above 95% coverage)
+
+- FastAPI public inference application within the existing inference package
+
+- `GET /health` service and model readiness endpoint
+
+- `GET /model` model identity, architecture, provenance, and schema endpoint
+
+- `POST /predict` strict processed-light-curve prediction endpoint
+
+- Exported PyTorch checkpoint loading during application lifespan
+
+- Healthy and degraded startup modes with descriptive readiness errors
+
+- Strict Pydantic request and response validation with generated OpenAPI docs
+
+- Optional scientific descriptor extraction from processed metadata without
+  adding preprocessing or changing the CNN
+
+- Full repository and service tests (173 passing, above 96% coverage)
 
 Pending
 
@@ -404,3 +431,44 @@ Platform communicates only with exported inference APIs.
 
 - ONNX reference execution matches PyTorch within `rtol=1e-5` and `atol=1e-6`
   for batches of 1, 2, and 3 and cadence lengths of 16, 32, and 65.
+
+---
+
+## Public Inference Service Decisions
+
+- The request explicitly superseded the repository's earlier FastAPI/REST
+  non-goal. The service is implemented as a thin adapter inside the existing
+  `inference` package; repository directories, CNN architecture, training,
+  export, and preprocessing contracts were not redesigned.
+
+- The ASGI entry point is
+  `transitlens_ml_core.inference.service:app`. A custom application can be
+  composed with `create_app` for explicit model paths, devices, predictor
+  injection, or training provenance.
+
+- Production startup reads the self-describing PyTorch artifact path from
+  `TRANSITLENS_MODEL_PATH`. If configuration or loading fails, the service
+  remains available in degraded mode so `/health` can report readiness while
+  `/model` and `/predict` return descriptive HTTP 503 responses.
+
+- API request validation enforces exactly the fixed `time`, `normalized_flux`,
+  `wavelet_flux`, and `metadata` fields. Cadence arrays must be non-empty,
+  finite, equally sized, and ordered by strictly increasing time.
+
+- The API response intentionally renames internal `predicted_class` to the
+  explicitly requested public `prediction` field and adds transit depth,
+  duration, estimated period, and signal-to-noise ratio. The internal
+  `PredictionResult` interface remains unchanged.
+
+- Scientific descriptors are read from processed metadata using stable full and
+  short aliases. Missing, boolean, or non-finite descriptors are returned as
+  `null`; the service does not fabricate astronomical estimates or introduce
+  prohibited preprocessing.
+
+- `training_timestamp` is nullable because existing exported artifacts do not
+  contain reliable training-time provenance. Deployments may provide a known
+  timestamp through `create_app`; filesystem modification time is not
+  misrepresented as training time.
+
+- FastAPI validates both request and response schemas and publishes OpenAPI at
+  `/openapi.json` with interactive documentation at `/docs`.
