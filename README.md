@@ -12,6 +12,35 @@ This repository owns the complete ML lifecycle including dataset loading, model 
 
 No FITS processing or frontend functionality should exist in this repository.
 
+## Periodic TESSCut training worker
+
+The optional worker reads confirmed-planet (`CP`/`KP`) and false-positive
+(`FP`) labels from a NASA Exoplanet Archive TOI CSV, downloads unseen SPOC
+TESSCut target-pixel files sequentially, extracts fixed-length aperture light
+curves, and trains the baseline model after both classes reach the configured
+minimum. Ambiguous candidates are skipped.
+
+Test one collection cycle:
+
+```powershell
+uv run --extra tesscut transitlens-tesscut-trainer `
+  --catalog ..\archive\TOI_2026.06.25_21.21.19.csv `
+  --max-per-cycle 2 --minimum-per-class 20 --once
+```
+
+Run continuously every five minutes by removing `--once` and adding
+`--interval-seconds 300`. Samples are deduplicated in `data/tesscut`; the
+evaluated serving artifact is written to `weights/transitlens_baseline.pt`.
+
+Install the Windows sign-in automation:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\install_tesscut_task.ps1
+```
+
+The task starts immediately, restarts after failures, and writes to
+`logs/tesscut-worker.log`. Remove it with `scripts\remove_tesscut_task.ps1`.
+
 ---
 
 # Responsibilities

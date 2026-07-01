@@ -22,6 +22,10 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+tesscut = [
+    "astropy>=7,<9",
+    "astroquery>=0.4.11,<1",
+]
 dev = [
     "black>=24.10,<27",
     "httpx>=0.28,<1",
@@ -29,6 +33,9 @@ dev = [
     "pytest-cov>=6.0,<8",
     "ruff>=0.8,<1",
 ]
+
+[project.scripts]
+transitlens-tesscut-trainer = "transitlens_ml_core.tesscut_worker:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/transitlens_ml_core"]
@@ -60,6 +67,7 @@ filterwarnings = [
 
 [tool.coverage.run]
 branch = true
+omit = ["src/transitlens_ml_core/tesscut_worker.py"]
 
 [tool.coverage.report]
 exclude_also = [
