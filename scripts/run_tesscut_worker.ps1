@@ -8,6 +8,7 @@ $logFile = Join-Path $logDirectory 'tesscut-worker.log'
 
 New-Item -ItemType Directory -Path $logDirectory -Force | Out-Null
 Set-Location $repository
+$env:PYTHONUNBUFFERED = '1'
 
 & $uv run --extra tesscut transitlens-tesscut-trainer `
     --catalog $catalog `

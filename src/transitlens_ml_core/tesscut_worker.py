@@ -27,6 +27,7 @@ from transitlens_ml_core.models import BaselineCNN
 from transitlens_ml_core.training import Trainer
 
 LOGGER = logging.getLogger("transitlens.tesscut")
+Tesscut.TIMEOUT = 60
 POSITIVE_DISPOSITIONS = frozenset({"CP", "KP"})
 NEGATIVE_DISPOSITIONS = frozenset({"FP"})
 
@@ -126,10 +127,21 @@ def collect(
     targets: list[Target], data_dir: Path, limit: int, sample_length: int
 ) -> int:
     """Fetch at most ``limit`` unseen target-sector samples sequentially."""
+    data_dir.mkdir(parents=True, exist_ok=True)
+    cursor_path = data_dir / "collector-cursor.txt"
+    try:
+        cursor = int(cursor_path.read_text(encoding="ascii")) % len(targets)
+    except (FileNotFoundError, ValueError):
+        cursor = 0
     added = 0
-    for target in targets:
+    attempts = min(len(targets), max(10, limit * 5))
+    for offset in range(attempts):
         if added >= limit:
             break
+        index = (cursor + offset) % len(targets)
+        target = targets[index]
+        cursor_path.write_text(str((index + 1) % len(targets)), encoding="ascii")
+        LOGGER.info("querying TIC %s", target.tic_id)
         try:
             coordinates = SkyCoord(target.ra, target.dec, unit=(u.deg, u.deg))
             sectors = Tesscut.get_sectors(coordinates=coordinates)
